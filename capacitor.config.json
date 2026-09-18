@@ -1,0 +1,12 @@
+{
+  "appId": "com.duchieu.smokedetector",
+  "appName": "Smoke Detector",
+  "webDir": "www",
+  "server": {
+    "iosScheme": "capacitor",
+    "allowNavigation": ["*"]
+  },
+  "ios": {
+    "contentInset": "always"
+  }
+}
