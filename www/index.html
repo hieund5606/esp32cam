@@ -10,19 +10,23 @@
 </head>
 <body>
 
+<!-- SPLASH -->
 <div id="splash" class="splash">
   <div class="splash-icon">🛡️</div>
   <div class="splash-title">SMOKE DETECTOR</div>
   <div class="splash-sub">Hệ thống giám sát khói thuốc lá</div>
 </div>
 
+<!-- BANNER -->
 <div id="connBanner" class="banner banner-hidden">
   <span class="banner-dot"></span>
   <span id="bannerText">Đang kết nối...</span>
 </div>
 
+<!-- CONTENT -->
 <div class="content">
 
+  <!-- TAB DASHBOARD -->
   <div id="tab-dashboard" class="tab-page active">
     <div class="header">
       <h1>🛡️ SMOKE DETECTOR</h1>
@@ -71,6 +75,7 @@
     </div>
   </div>
 
+  <!-- TAB CAMERA -->
   <div id="tab-camera" class="tab-page">
     <div class="header">
       <h1>📷 CAMERA</h1>
@@ -101,6 +106,7 @@
     </div>
   </div>
 
+  <!-- TAB SETTINGS -->
   <div id="tab-settings" class="tab-page">
     <div class="header">
       <h1>⚙️ CÀI ĐẶT</h1>
@@ -110,11 +116,11 @@
       <div class="config-title">🔌 Kết nối thiết bị</div>
       <div class="config-row">
         <label>ESP32-S3 (IP hoặc hostname)</label>
-        <input type="text" id="cfgMainHost" placeholder="192.168.1.49 hoặc duchieu.local">
+        <input type="text" id="cfgMainHost" placeholder="192.168.1.4 hoặc duchieu.local">
       </div>
       <div class="config-row">
         <label>ESP32-CAM (IP hoặc hostname)</label>
-        <input type="text" id="cfgCamHost" placeholder="192.168.1.50 hoặc duchieu_esp32cam.local">
+        <input type="text" id="cfgCamHost" placeholder="192.168.1.5 hoặc duchieu_esp32cam.local">
       </div>
       <div class="config-row">
         <label>Username</label>
@@ -152,6 +158,7 @@
 
 </div>
 
+<!-- TAB BAR -->
 <nav class="tab-bar">
   <div class="tab-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
     <span class="tab-icon">📊</span>
@@ -167,6 +174,7 @@
   </div>
 </nav>
 
+<!-- OTA MODAL -->
 <div id="otaModal" class="modal hidden">
   <div class="modal-header">
     <span id="otaTitle">OTA Update</span>
