@@ -1,6 +1,7 @@
 // ============================================================
-// SMOKE DETECTOR APP - v3
-// Bỏ Auth khỏi fetch → tránh CORS preflight trên iOS
+// SMOKE DETECTOR APP - v4
+// Fix: Banner logic dùng thời gian thay vì đếm fail
+// Bỏ Auth → tránh CORS preflight trên iOS
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -13,10 +14,12 @@ const DEFAULT_CONFIG = {
 let config = { ...DEFAULT_CONFIG };
 let isStreaming = false;
 let isConnected = false;
+let lastOkTime = 0;              // ← Thời điểm nhận data OK cuối cùng
 let failCount = 0;
-let consecutiveFails = 0;
-const MAX_FAILS = 3;
 let appStartTime = Date.now();
+
+const DISCONNECT_THRESHOLD_MS = 5000;   // Báo mất kết nối nếu > 5s không có data
+const HTTP_TIMEOUT_MS = 4000;           // Timeout cho iPhone (dài hơn laptop)
 
 let chart = null;
 const MAX_CHART_POINTS = 60;
@@ -35,7 +38,7 @@ function buildUrl(host, path) {
 // ============================================================
 // HTTP GET - KHÔNG gửi Authorization (tránh preflight)
 // ============================================================
-async function httpGet(url, timeoutMs = 3000) {
+async function httpGet(url, timeoutMs = HTTP_TIMEOUT_MS) {
   if (!url) throw new Error('Chưa cấu hình host');
 
   const controller = new AbortController();
@@ -76,9 +79,10 @@ window.addEventListener('load', () => {
 
   setInterval(fetchStatus, 1000);
   setInterval(updateAppUptime, 1000);
+  setInterval(checkDisconnect, 1000);   // ← Kiểm tra mất kết nối riêng
   fetchStatus();
 
-  addLog('📡 Khởi động app v3 (no-auth mode)', 'ok');
+  addLog('📡 Khởi động app v4', 'ok');
   if (!config.mainHost) {
     addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
   } else {
@@ -127,6 +131,10 @@ function saveSettings() {
 
   document.getElementById('mainHost').textContent = config.mainHost;
   document.getElementById('camHost').textContent = config.camHost || '--';
+
+  // Reset trạng thái kết nối
+  isConnected = false;
+  lastOkTime = 0;
 
   addLog(`✅ Đã lưu: S3=${config.mainHost}, CAM=${config.camHost || '--'}`, 'ok');
   alert('Đã lưu cài đặt!');
@@ -185,7 +193,7 @@ async function testConnection() {
 }
 
 // ============================================================
-// FETCH STATUS
+// FETCH STATUS - Chỉ xử lý thành công, không xử lý fail ở đây
 // ============================================================
 async function fetchStatus() {
   if (!config.mainHost) return;
@@ -193,7 +201,7 @@ async function fetchStatus() {
   const url = buildUrl(config.mainHost, '/data');
 
   try {
-    const text = await httpGet(url, 2500);
+    const text = await httpGet(url, HTTP_TIMEOUT_MS);
     const parts = text.split('|');
 
     if (parts.length >= 4) {
@@ -205,26 +213,38 @@ async function fetchStatus() {
       updateSensorUI(v1, v2, t1, t2);
       updateChart(v1, v2);
 
+      // Ghi nhận thời điểm OK
+      lastOkTime = Date.now();
+
+      // Lần đầu kết nối → ẩn banner
       if (!isConnected) {
         isConnected = true;
-        consecutiveFails = 0;
         setConnStatus(true);
         addLog('✅ Kết nối S3 thành công', 'ok');
       }
-      consecutiveFails = 0;
     }
   } catch (err) {
-    consecutiveFails++;
-    if (consecutiveFails === MAX_FAILS && isConnected) {
-      isConnected = false;
-      failCount++;
-      document.getElementById('failCount').textContent = failCount;
-      setConnStatus(false);
-      addLog(`❌ Mất kết nối S3: ${err.message}`, 'err');
-    } else if (!isConnected && consecutiveFails === MAX_FAILS) {
-      setConnStatus(false);
-      addLog(`❌ S3 không kết nối: ${err.message}`, 'err');
-    }
+    // KHÔNG xử lý gì ở đây - để checkDisconnect() lo
+    // Tránh race condition khi 1 request fail nhưng request sau OK
+  }
+}
+
+// ============================================================
+// KIỂM TRA MẤT KẾT NỐI - Chạy mỗi 1s, độc lập với fetch
+// ============================================================
+function checkDisconnect() {
+  if (!config.mainHost) return;
+  if (lastOkTime === 0) return;   // Chưa từng kết nối, chưa cần báo
+
+  const elapsed = Date.now() - lastOkTime;
+
+  if (isConnected && elapsed > DISCONNECT_THRESHOLD_MS) {
+    isConnected = false;
+    failCount++;
+    const el = document.getElementById('failCount');
+    if (el) el.textContent = failCount;
+    setConnStatus(false);
+    addLog(`❌ Mất kết nối S3 (${Math.round(elapsed / 1000)}s không có data)`, 'err');
   }
 }
 
@@ -233,6 +253,8 @@ function setConnStatus(ok) {
   const text = document.getElementById('connText');
   const banner = document.getElementById('connBanner');
   const bannerText = document.getElementById('bannerText');
+
+  if (!dot || !text || !banner || !bannerText) return;
 
   if (ok) {
     dot.className = 'dot dot-ok';
@@ -420,6 +442,7 @@ function loadNextFrame() {
 function setCamStatus(ok) {
   const dot = document.querySelector('#camStatus .dot');
   const text = document.getElementById('camStatusText');
+  if (!dot || !text) return;
   if (ok) {
     dot.className = 'dot dot-ok';
     text.textContent = 'Camera OK';
@@ -447,6 +470,7 @@ async function captureAndSave() {
 
 function addCamLog(msg, type = '') {
   const logEl = document.getElementById('camLog');
+  if (!logEl) return;
   const time = new Date().toLocaleTimeString('vi-VN');
   const line = document.createElement('div');
   line.className = 'log-line ' + type;
@@ -480,7 +504,8 @@ function switchTab(name) {
   document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
-  document.querySelector(`.tab-item[data-tab="${name}"]`).classList.add('active');
+  const tabItem = document.querySelector(`.tab-item[data-tab="${name}"]`);
+  if (tabItem) tabItem.classList.add('active');
 }
 
 // ============================================================
@@ -498,7 +523,8 @@ function addLog(msg, type = '') {
 }
 
 function clearLog() {
-  document.getElementById('sysLog').innerHTML = '';
+  const el = document.getElementById('sysLog');
+  if (el) el.innerHTML = '';
   addLog('🗑️ Đã xóa log', 'ok');
 }
 
@@ -511,8 +537,10 @@ function updateAppUptime() {
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
   let text = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
-  document.getElementById('appUptime').textContent = text;
-  document.getElementById('uptimeText').textContent = 'Uptime: ' + text;
+  const el1 = document.getElementById('appUptime');
+  const el2 = document.getElementById('uptimeText');
+  if (el1) el1.textContent = text;
+  if (el2) el2.textContent = 'Uptime: ' + text;
 }
 
 // ============================================================
