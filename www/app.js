@@ -1,6 +1,6 @@
 // ============================================================
-// SMOKE DETECTOR APP - v2
-// Fix: CORS handling, IP support, test connection
+// SMOKE DETECTOR APP - v3
+// Bỏ Auth khỏi fetch → tránh CORS preflight trên iOS
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -32,14 +32,8 @@ function buildUrl(host, path) {
   return base + (path.startsWith('/') ? path : '/' + path);
 }
 
-function authHeader() {
-  return {
-    'Authorization': 'Basic ' + btoa(config.username + ':' + config.password)
-  };
-}
-
 // ============================================================
-// HTTP GET
+// HTTP GET - KHÔNG gửi Authorization (tránh preflight)
 // ============================================================
 async function httpGet(url, timeoutMs = 3000) {
   if (!url) throw new Error('Chưa cấu hình host');
@@ -50,9 +44,9 @@ async function httpGet(url, timeoutMs = 3000) {
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: authHeader(),
       signal: controller.signal,
       cache: 'no-cache'
+      // KHÔNG gửi headers Authorization → không trigger preflight
     });
     clearTimeout(timer);
     if (res.status === 401) throw new Error('401 - Sai username/password');
@@ -62,7 +56,7 @@ async function httpGet(url, timeoutMs = 3000) {
     clearTimeout(timer);
     if (err.name === 'AbortError') throw new Error('Timeout - ESP32 không phản hồi');
     if (err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
-      throw new Error('Lỗi mạng/CORS - kiểm tra IP + firmware CORS');
+      throw new Error('Lỗi mạng/CORS - kiểm tra IP + firmware');
     }
     throw err;
   }
@@ -84,7 +78,7 @@ window.addEventListener('load', () => {
   setInterval(updateAppUptime, 1000);
   fetchStatus();
 
-  addLog('📡 Khởi động app Smoke Detector v2', 'ok');
+  addLog('📡 Khởi động app v3 (no-auth mode)', 'ok');
   if (!config.mainHost) {
     addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
   } else {
