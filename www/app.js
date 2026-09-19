@@ -1,32 +1,71 @@
 // ============================================================
-// SMOKE DETECTOR APP - LOGIC CHÍNH
+// SMOKE DETECTOR APP - LOGIC CHÍNH (v2)
 // ============================================================
 
-// ===== CẤU HÌNH MẶC ĐỊNH =====
 const DEFAULT_CONFIG = {
-  mainHost: 'duchieu.local',
-  camHost: 'duchieu_esp32cam.local',
+  mainHost: '',
+  camHost: '',
   username: 'duchieu',
   password: '123456789'
 };
 
-// ===== TRẠNG THÁI =====
 let config = { ...DEFAULT_CONFIG };
 let isStreaming = false;
-let streamTimer = null;
-let lastCaptureTime = 0;
-
 let isConnected = false;
 let failCount = 0;
 let consecutiveFails = 0;
 const MAX_FAILS = 3;
-
-let lastAlertCount = 0;
 let appStartTime = Date.now();
 
-// Chart
 let chart = null;
 const MAX_CHART_POINTS = 60;
+
+// ============================================================
+// URL HELPERS
+// ============================================================
+function buildUrl(host, path) {
+  let base = (host || '').trim();
+  if (!base) return '';
+  if (!/^https?:\/\//i.test(base)) base = 'http://' + base;
+  base = base.replace(/\/+$/, '');
+  return base + (path.startsWith('/') ? path : '/' + path);
+}
+
+function authHeader() {
+  return {
+    'Authorization': 'Basic ' + btoa(config.username + ':' + config.password)
+  };
+}
+
+// ============================================================
+// HTTP GET với auth + phân loại lỗi rõ ràng
+// ============================================================
+async function httpGet(url, timeoutMs = 3000) {
+  if (!url) throw new Error('Chưa cấu hình host');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: authHeader(),
+      signal: controller.signal,
+      cache: 'no-cache'
+    });
+    clearTimeout(timer);
+    if (res.status === 401) throw new Error('401 Sai username/password');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.text();
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('Timeout - ESP32 không phản hồi');
+    if (err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
+      throw new Error('CORS/Mạng - xem hướng dẫn fix firmware bên dưới');
+    }
+    throw err;
+  }
+}
 
 // ============================================================
 // KHỞI ĐỘNG
@@ -36,21 +75,18 @@ window.addEventListener('load', () => {
   initChart();
   setupUI();
 
-  // Ẩn splash sau 1.2s
   setTimeout(() => {
     document.getElementById('splash').classList.add('hide');
   }, 1200);
 
-  // Bắt đầu vòng lặp cập nhật
   setInterval(fetchStatus, 1000);
   setInterval(updateAppUptime, 1000);
-
-  // Fetch lần đầu
   fetchStatus();
 
-  addLog('📡 Khởi động app Smoke Detector', 'ok');
-  addLog(`🎯 Target S3: ${config.mainHost}`, 'ok');
-  addLog(`🎥 Target CAM: ${config.camHost}`, 'ok');
+  addLog('📡 Khởi động app Smoke Detector v2', 'ok');
+  if (!config.mainHost) {
+    addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
+  }
 });
 
 // ============================================================
@@ -66,26 +102,29 @@ function loadConfig() {
     }
   }
 
-  // Điền vào form
-  document.getElementById('cfgMainHost').value = config.mainHost;
-  document.getElementById('cfgCamHost').value = config.camHost;
-  document.getElementById('cfgUser').value = config.username;
-  document.getElementById('cfgPass').value = config.password;
+  document.getElementById('cfgMainHost').value = config.mainHost || '';
+  document.getElementById('cfgCamHost').value = config.camHost || '';
+  document.getElementById('cfgUser').value = config.username || '';
+  document.getElementById('cfgPass').value = config.password || '';
 
-  document.getElementById('mainHost').textContent = config.mainHost;
-  document.getElementById('camHost').textContent = config.camHost;
+  document.getElementById('mainHost').textContent = config.mainHost || '--';
+  document.getElementById('camHost').textContent = config.camHost || '--';
 }
 
 function saveSettings() {
   const newConfig = {
     mainHost: document.getElementById('cfgMainHost').value.trim(),
     camHost: document.getElementById('cfgCamHost').value.trim(),
-    username: document.getElementById('cfgUser').value.trim(),
-    password: document.getElementById('cfgPass').value
+    username: document.getElementById('cfgUser').value.trim() || 'duchieu',
+    password: document.getElementById('cfgPass').value || '123456789'
   };
 
-  if (!newConfig.mainHost || !newConfig.camHost) {
-    alert('Vui lòng nhập hostname/IP!');
+  if (!newConfig.mainHost) {
+    alert('Vui lòng nhập IP hoặc hostname của ESP32-S3!');
+    return;
+  }
+  if (!newConfig.camHost) {
+    alert('Vui lòng nhập IP hoặc hostname của ESP32-CAM!');
     return;
   }
 
@@ -95,47 +134,51 @@ function saveSettings() {
   document.getElementById('mainHost').textContent = config.mainHost;
   document.getElementById('camHost').textContent = config.camHost;
 
-  addLog(`✅ Đã lưu cài đặt: S3=${config.mainHost}, CAM=${config.camHost}`, 'ok');
+  addLog(`✅ Đã lưu: S3=${config.mainHost}, CAM=${config.camHost}`, 'ok');
   alert('Đã lưu cài đặt!');
   fetchStatus();
 }
 
 // ============================================================
-// HTTP FETCH VỚI BASIC AUTH
+// TEST KẾT NỐI
 // ============================================================
-function authHeader() {
-  return {
-    'Authorization': 'Basic ' + btoa(config.username + ':' + config.password)
-  };
-}
+async function testConnection() {
+  addLog('🔍 Bắt đầu test kết nối...', 'warn');
 
-async function httpGet(url, timeoutMs = 3000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
+  // Test S3
+  const s3Url = buildUrl(config.mainHost, '/data');
+  addLog(`→ Test S3: ${s3Url}`, '');
   try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: authHeader(),
-      signal: controller.signal,
-      cache: 'no-cache'
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.text();
+    const res = await httpGet(s3Url, 5000);
+    addLog(`✅ S3 OK: "${res}"`, 'ok');
+    alert('✅ S3 kết nối OK!\nData: ' + res);
   } catch (err) {
-    clearTimeout(timer);
-    throw err;
+    addLog(`❌ S3 lỗi: ${err.message}`, 'err');
+    alert('❌ S3 lỗi:\n' + err.message);
   }
+
+  // Test CAM (img load)
+  const camUrl = buildUrl(config.camHost, '/photo');
+  addLog(`→ Test CAM: ${camUrl}`, '');
+  const img = new Image();
+  img.onload = () => {
+    addLog('✅ CAM OK - ảnh load được', 'ok');
+    setCamStatus(true);
+  };
+  img.onerror = () => {
+    addLog('❌ CAM lỗi - không load được /photo', 'err');
+    setCamStatus(false);
+  };
+  img.src = camUrl + '?t=' + Date.now();
 }
 
 // ============================================================
 // FETCH TRẠNG THÁI S3
 // ============================================================
 async function fetchStatus() {
-  // Xử lý URL: nếu là IP thì thêm http://, nếu là hostname .local cũng thêm http://
-  const host = config.mainHost;
-  const url = host.startsWith('http') ? `${host}/data` : `http://${host}/data`;
+  if (!config.mainHost) return;
+
+  const url = buildUrl(config.mainHost, '/data');
 
   try {
     const text = await httpGet(url, 2500);
@@ -160,15 +203,15 @@ async function fetchStatus() {
     }
   } catch (err) {
     consecutiveFails++;
-    if (consecutiveFails >= MAX_FAILS && isConnected) {
+    if (consecutiveFails === MAX_FAILS && isConnected) {
       isConnected = false;
       failCount++;
       document.getElementById('failCount').textContent = failCount;
       setConnStatus(false);
-      addLog(`❌ Mất kết nối S3 (${err.message})`, 'err');
+      addLog(`❌ Mất kết nối S3: ${err.message}`, 'err');
     } else if (!isConnected && consecutiveFails === MAX_FAILS) {
       setConnStatus(false);
-      addLog(`❌ Không kết nối được S3 (${err.message})`, 'err');
+      addLog(`❌ S3 không kết nối: ${err.message}`, 'err');
     }
   }
 }
@@ -187,15 +230,14 @@ function setConnStatus(ok) {
     dot.className = 'dot dot-bad';
     text.textContent = 'Mất kết nối';
     banner.classList.remove('banner-hidden');
-    bannerText.textContent = `Không kết nối được ${config.mainHost}`;
+    bannerText.textContent = `Không kết nối được ${config.mainHost || 'S3'}`;
   }
 }
 
 // ============================================================
-// CẬP NHẬT UI CẢM BIẾN
+// UI CẢM BIẾN
 // ============================================================
 function updateSensorUI(v1, v2, t1, t2) {
-  // Cảm biến 1
   const el1 = document.getElementById('val1');
   el1.textContent = v1;
   el1.classList.remove('warn', 'danger');
@@ -205,7 +247,6 @@ function updateSensorUI(v1, v2, t1, t2) {
   document.getElementById('bar1').style.width = Math.min(100, (v1 / 4095) * 100) + '%';
   document.getElementById('thresh1').textContent = t1;
 
-  // Cảm biến 2
   const el2 = document.getElementById('val2');
   el2.textContent = v2;
   el2.classList.remove('warn', 'danger');
@@ -215,7 +256,6 @@ function updateSensorUI(v1, v2, t1, t2) {
   document.getElementById('bar2').style.width = Math.min(100, (v2 / 4095) * 100) + '%';
   document.getElementById('thresh2').textContent = t2;
 
-  // Điền vào input nếu chưa chỉnh
   const inp1 = document.getElementById('inputTh1');
   const inp2 = document.getElementById('inputTh2');
   if (!inp1.value) inp1.value = t1;
@@ -234,10 +274,7 @@ async function saveThresholds() {
     return;
   }
 
-  const host = config.mainHost;
-  const url = host.startsWith('http')
-    ? `${host}/set_threshold?th1=${th1}&th2=${th2}`
-    : `http://${host}/set_threshold?th1=${th1}&th2=${th2}`;
+  const url = buildUrl(config.mainHost, `/set_threshold?th1=${th1}&th2=${th2}`);
 
   try {
     const res = await httpGet(url, 5000);
@@ -245,7 +282,7 @@ async function saveThresholds() {
     alert('Đã lưu ngưỡng!\n' + res);
   } catch (err) {
     addLog(`❌ Lỗi lưu ngưỡng: ${err.message}`, 'err');
-    alert('Lỗi lưu ngưỡng: ' + err.message);
+    alert('Lỗi: ' + err.message);
   }
 }
 
@@ -259,26 +296,8 @@ function initChart() {
     data: {
       labels: [],
       datasets: [
-        {
-          label: 'Cảm biến 1',
-          data: [],
-          borderColor: '#00ff88',
-          backgroundColor: 'rgba(0,255,136,0.1)',
-          borderWidth: 2,
-          tension: 0.3,
-          pointRadius: 0,
-          fill: true
-        },
-        {
-          label: 'Cảm biến 2',
-          data: [],
-          borderColor: '#00d4ff',
-          backgroundColor: 'rgba(0,212,255,0.1)',
-          borderWidth: 2,
-          tension: 0.3,
-          pointRadius: 0,
-          fill: true
-        }
+        { label: 'CB1', data: [], borderColor: '#00ff88', backgroundColor: 'rgba(0,255,136,0.1)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true },
+        { label: 'CB2', data: [], borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.1)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true }
       ]
     },
     options: {
@@ -286,58 +305,44 @@ function initChart() {
       maintainAspectRatio: false,
       animation: { duration: 0 },
       scales: {
-        y: {
-          beginAtZero: true,
-          max: 4095,
-          grid: { color: 'rgba(255,255,255,0.05)' },
-          ticks: { color: '#888', font: { size: 10 } }
-        },
-        x: {
-          grid: { display: false },
-          ticks: { display: false }
-        }
+        y: { beginAtZero: true, max: 4095, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', font: { size: 10 } } },
+        x: { grid: { display: false }, ticks: { display: false } }
       },
-      plugins: {
-        legend: {
-          labels: { color: '#eee', font: { size: 11 }, boxWidth: 12 }
-        }
-      }
+      plugins: { legend: { labels: { color: '#eee', font: { size: 11 }, boxWidth: 12 } } }
     }
   });
 }
 
 function updateChart(v1, v2) {
   if (!chart) return;
-
   chart.data.labels.push('');
   chart.data.datasets[0].data.push(v1);
   chart.data.datasets[1].data.push(v2);
-
   if (chart.data.labels.length > MAX_CHART_POINTS) {
     chart.data.labels.shift();
     chart.data.datasets[0].data.shift();
     chart.data.datasets[1].data.shift();
   }
-
   chart.update();
 }
 
 // ============================================================
-// CAMERA
+// CAMERA - Không cần auth vì firmware CAM không yêu cầu
 // ============================================================
 function toggleStream() {
   if (isStreaming) {
-    // Dừng stream
     isStreaming = false;
-    if (streamTimer) clearTimeout(streamTimer);
-    streamTimer = null;
     document.getElementById('btnStreamToggle').textContent = '▶ BẮT ĐẦU';
     document.getElementById('camStream').style.display = 'none';
-    document.getElementById('camPlaceholder').style.display = 'block';
-    document.getElementById('camPlaceholder').textContent = 'Đã dừng stream';
+    const ph = document.getElementById('camPlaceholder');
+    ph.style.display = 'block';
+    ph.textContent = 'Đã dừng stream';
     addLog('⏹ Dừng camera stream', 'warn');
   } else {
-    // Bắt đầu stream
+    if (!config.camHost) {
+      alert('Chưa cấu hình ESP32-CAM! Vào tab Cài đặt.');
+      return;
+    }
     isStreaming = true;
     document.getElementById('btnStreamToggle').textContent = '⏹ DỪNG';
     document.getElementById('camPlaceholder').style.display = 'none';
@@ -351,11 +356,8 @@ function loadNextFrame() {
   if (!isStreaming) return;
 
   const img = document.getElementById('camStream');
-  const host = config.camHost;
-  const base = host.startsWith('http') ? host : `http://${host}`;
-  const t = Date.now();
+  const url = buildUrl(config.camHost, '/photo') + '?t=' + Date.now();
 
-  // Set timeout phòng trường hợp ảnh không load
   const timeout = setTimeout(() => {
     if (isStreaming) {
       addLog('⚠️ Timeout frame, thử lại...', 'warn');
@@ -366,23 +368,16 @@ function loadNextFrame() {
   img.onload = () => {
     clearTimeout(timeout);
     setCamStatus(true);
-    if (isStreaming) {
-      setTimeout(loadNextFrame, 50); // Load frame tiếp theo
-    }
+    if (isStreaming) setTimeout(loadNextFrame, 50);
   };
 
   img.onerror = () => {
     clearTimeout(timeout);
     setCamStatus(false);
-    if (isStreaming) {
-      setTimeout(loadNextFrame, 1000);
-    }
+    if (isStreaming) setTimeout(loadNextFrame, 1000);
   };
 
-  // Basic auth trong URL để browser có thể load ảnh (vì thẻ img không gửi header)
-  img.src = `${base}/photo?t=${t}&user=${encodeURIComponent(config.username)}&pass=${encodeURIComponent(config.password)}`;
-  // Chú ý: ESP32-CAM của mày dùng Basic Auth qua header, không phải query string
-  // → cần thêm endpoint /photo_auth hoặc tắt auth cho /photo
+  img.src = url;
 }
 
 function setCamStatus(ok) {
@@ -398,20 +393,16 @@ function setCamStatus(ok) {
 }
 
 async function captureAndSave() {
-  const host = config.camHost;
-  const base = host.startsWith('http') ? host : `http://${host}`;
-  const url = `${base}/save`;
-
-  const logEl = document.getElementById('camLog');
+  if (!config.camHost) {
+    alert('Chưa cấu hình ESP32-CAM!');
+    return;
+  }
+  const url = buildUrl(config.camHost, '/save');
   addCamLog('📸 Gửi lệnh chụp...');
-
   try {
-    const res = await httpGet(url, 15000);
-    addCamLog('✅ ' + res, 'ok');
-    // Reload frame
-    if (isStreaming) {
-      // Trigger immediate next frame
-    }
+    const res = await fetch(url, { cache: 'no-cache' });
+    const text = await res.text();
+    addCamLog('✅ ' + text, 'ok');
   } catch (err) {
     addCamLog('❌ Lỗi: ' + err.message, 'err');
   }
@@ -424,10 +415,7 @@ function addCamLog(msg, type = '') {
   line.className = 'log-line ' + type;
   line.textContent = `[${time}] ${msg}`;
   logEl.insertBefore(line, logEl.firstChild);
-
-  while (logEl.children.length > 30) {
-    logEl.removeChild(logEl.lastChild);
-  }
+  while (logEl.children.length > 30) logEl.removeChild(logEl.lastChild);
 }
 
 // ============================================================
@@ -435,11 +423,10 @@ function addCamLog(msg, type = '') {
 // ============================================================
 function openOTA(which) {
   const host = which === 'main' ? config.mainHost : config.camHost;
-  const base = host.startsWith('http') ? host : `http://${host}`;
-
-  document.getElementById('otaTitle').textContent =
-    which === 'main' ? '🔄 OTA S3 Firmware' : '🔄 OTA CAM Firmware';
-  document.getElementById('otaFrame').src = `${base}/update`;
+  if (!host) { alert('Chưa cấu hình host!'); return; }
+  const url = buildUrl(host, '/update');
+  document.getElementById('otaTitle').textContent = which === 'main' ? '🔄 OTA S3' : '🔄 OTA CAM';
+  document.getElementById('otaFrame').src = url;
   document.getElementById('otaModal').classList.remove('hidden');
 }
 
@@ -449,12 +436,11 @@ function closeOTA() {
 }
 
 // ============================================================
-// TAB SWITCHING
+// TAB
 // ============================================================
 function switchTab(name) {
   document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
-
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelector(`.tab-item[data-tab="${name}"]`).classList.add('active');
 }
@@ -469,10 +455,7 @@ function addLog(msg, type = '') {
   line.className = 'log-line ' + type;
   line.textContent = `[${time}] ${msg}`;
   el.insertBefore(line, el.firstChild);
-
-  while (el.children.length > 50) {
-    el.removeChild(el.lastChild);
-  }
+  while (el.children.length > 50) el.removeChild(el.lastChild);
 }
 
 function clearLog() {
@@ -488,21 +471,15 @@ function updateAppUptime() {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
-
-  let text = '';
-  if (h > 0) text = `${h}h ${m}m ${s}s`;
-  else if (m > 0) text = `${m}m ${s}s`;
-  else text = `${s}s`;
-
+  let text = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
   document.getElementById('appUptime').textContent = text;
   document.getElementById('uptimeText').textContent = 'Uptime: ' + text;
 }
 
 // ============================================================
-// UI SETUP
+// UI
 // ============================================================
 function setupUI() {
-  // Ngăn scroll body khi ở modal
   document.addEventListener('touchmove', (e) => {
     if (e.target.closest('.content')) return;
     e.preventDefault();
