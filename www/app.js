@@ -1,5 +1,6 @@
 // ============================================================
-// SMOKE DETECTOR APP - LOGIC CHÍNH (v2)
+// SMOKE DETECTOR APP - v2
+// Fix: CORS handling, IP support, test connection
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -38,7 +39,7 @@ function authHeader() {
 }
 
 // ============================================================
-// HTTP GET với auth + phân loại lỗi rõ ràng
+// HTTP GET
 // ============================================================
 async function httpGet(url, timeoutMs = 3000) {
   if (!url) throw new Error('Chưa cấu hình host');
@@ -54,14 +55,14 @@ async function httpGet(url, timeoutMs = 3000) {
       cache: 'no-cache'
     });
     clearTimeout(timer);
-    if (res.status === 401) throw new Error('401 Sai username/password');
+    if (res.status === 401) throw new Error('401 - Sai username/password');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return await res.text();
   } catch (err) {
     clearTimeout(timer);
     if (err.name === 'AbortError') throw new Error('Timeout - ESP32 không phản hồi');
     if (err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
-      throw new Error('CORS/Mạng - xem hướng dẫn fix firmware bên dưới');
+      throw new Error('Lỗi mạng/CORS - kiểm tra IP + firmware CORS');
     }
     throw err;
   }
@@ -86,6 +87,9 @@ window.addEventListener('load', () => {
   addLog('📡 Khởi động app Smoke Detector v2', 'ok');
   if (!config.mainHost) {
     addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
+  } else {
+    addLog(`🎯 S3: ${config.mainHost}`, 'ok');
+    addLog(`🎥 CAM: ${config.camHost || 'chưa cấu hình'}`, 'ok');
   }
 });
 
@@ -120,11 +124,7 @@ function saveSettings() {
   };
 
   if (!newConfig.mainHost) {
-    alert('Vui lòng nhập IP hoặc hostname của ESP32-S3!');
-    return;
-  }
-  if (!newConfig.camHost) {
-    alert('Vui lòng nhập IP hoặc hostname của ESP32-CAM!');
+    alert('Vui lòng nhập IP/hostname của ESP32-S3!');
     return;
   }
 
@@ -132,9 +132,9 @@ function saveSettings() {
   localStorage.setItem('smoke_config', JSON.stringify(config));
 
   document.getElementById('mainHost').textContent = config.mainHost;
-  document.getElementById('camHost').textContent = config.camHost;
+  document.getElementById('camHost').textContent = config.camHost || '--';
 
-  addLog(`✅ Đã lưu: S3=${config.mainHost}, CAM=${config.camHost}`, 'ok');
+  addLog(`✅ Đã lưu: S3=${config.mainHost}, CAM=${config.camHost || '--'}`, 'ok');
   alert('Đã lưu cài đặt!');
   fetchStatus();
 }
@@ -146,34 +146,52 @@ async function testConnection() {
   addLog('🔍 Bắt đầu test kết nối...', 'warn');
 
   // Test S3
-  const s3Url = buildUrl(config.mainHost, '/data');
-  addLog(`→ Test S3: ${s3Url}`, '');
-  try {
-    const res = await httpGet(s3Url, 5000);
-    addLog(`✅ S3 OK: "${res}"`, 'ok');
-    alert('✅ S3 kết nối OK!\nData: ' + res);
-  } catch (err) {
-    addLog(`❌ S3 lỗi: ${err.message}`, 'err');
-    alert('❌ S3 lỗi:\n' + err.message);
+  if (config.mainHost) {
+    const s3Url = buildUrl(config.mainHost, '/data');
+    addLog(`→ S3: ${s3Url}`, '');
+    try {
+      const res = await httpGet(s3Url, 5000);
+      addLog(`✅ S3 OK: "${res}"`, 'ok');
+    } catch (err) {
+      addLog(`❌ S3 lỗi: ${err.message}`, 'err');
+    }
+  } else {
+    addLog('⚠️ Chưa nhập IP S3', 'warn');
   }
 
-  // Test CAM (img load)
-  const camUrl = buildUrl(config.camHost, '/photo');
-  addLog(`→ Test CAM: ${camUrl}`, '');
-  const img = new Image();
-  img.onload = () => {
-    addLog('✅ CAM OK - ảnh load được', 'ok');
-    setCamStatus(true);
-  };
-  img.onerror = () => {
-    addLog('❌ CAM lỗi - không load được /photo', 'err');
-    setCamStatus(false);
-  };
-  img.src = camUrl + '?t=' + Date.now();
+  // Test CAM
+  if (config.camHost) {
+    const camUrl = buildUrl(config.camHost, '/photo') + '?t=' + Date.now();
+    addLog(`→ CAM: ${buildUrl(config.camHost, '/photo')}`, '');
+    await new Promise((resolve) => {
+      const img = new Image();
+      const timer = setTimeout(() => {
+        addLog('❌ CAM timeout', 'err');
+        resolve();
+      }, 5000);
+      img.onload = () => {
+        clearTimeout(timer);
+        addLog('✅ CAM OK - load được ảnh', 'ok');
+        setCamStatus(true);
+        resolve();
+      };
+      img.onerror = () => {
+        clearTimeout(timer);
+        addLog('❌ CAM lỗi - không load được /photo', 'err');
+        setCamStatus(false);
+        resolve();
+      };
+      img.src = camUrl;
+    });
+  } else {
+    addLog('⚠️ Chưa nhập IP CAM', 'warn');
+  }
+
+  addLog('🏁 Test xong', 'warn');
 }
 
 // ============================================================
-// FETCH TRẠNG THÁI S3
+// FETCH STATUS
 // ============================================================
 async function fetchStatus() {
   if (!config.mainHost) return;
@@ -243,7 +261,6 @@ function updateSensorUI(v1, v2, t1, t2) {
   el1.classList.remove('warn', 'danger');
   if (v1 >= t1) el1.classList.add('danger');
   else if (v1 >= t1 * 0.7) el1.classList.add('warn');
-
   document.getElementById('bar1').style.width = Math.min(100, (v1 / 4095) * 100) + '%';
   document.getElementById('thresh1').textContent = t1;
 
@@ -252,7 +269,6 @@ function updateSensorUI(v1, v2, t1, t2) {
   el2.classList.remove('warn', 'danger');
   if (v2 >= t2) el2.classList.add('danger');
   else if (v2 >= t2 * 0.7) el2.classList.add('warn');
-
   document.getElementById('bar2').style.width = Math.min(100, (v2 / 4095) * 100) + '%';
   document.getElementById('thresh2').textContent = t2;
 
@@ -296,8 +312,26 @@ function initChart() {
     data: {
       labels: [],
       datasets: [
-        { label: 'CB1', data: [], borderColor: '#00ff88', backgroundColor: 'rgba(0,255,136,0.1)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true },
-        { label: 'CB2', data: [], borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.1)', borderWidth: 2, tension: 0.3, pointRadius: 0, fill: true }
+        {
+          label: 'Cảm biến 1',
+          data: [],
+          borderColor: '#00ff88',
+          backgroundColor: 'rgba(0,255,136,0.1)',
+          borderWidth: 2,
+          tension: 0.3,
+          pointRadius: 0,
+          fill: true
+        },
+        {
+          label: 'Cảm biến 2',
+          data: [],
+          borderColor: '#00d4ff',
+          backgroundColor: 'rgba(0,212,255,0.1)',
+          borderWidth: 2,
+          tension: 0.3,
+          pointRadius: 0,
+          fill: true
+        }
       ]
     },
     options: {
@@ -305,10 +339,19 @@ function initChart() {
       maintainAspectRatio: false,
       animation: { duration: 0 },
       scales: {
-        y: { beginAtZero: true, max: 4095, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', font: { size: 10 } } },
+        y: {
+          beginAtZero: true,
+          max: 4095,
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          ticks: { color: '#888', font: { size: 10 } }
+        },
         x: { grid: { display: false }, ticks: { display: false } }
       },
-      plugins: { legend: { labels: { color: '#eee', font: { size: 11 }, boxWidth: 12 } } }
+      plugins: {
+        legend: {
+          labels: { color: '#eee', font: { size: 11 }, boxWidth: 12 }
+        }
+      }
     }
   });
 }
@@ -327,7 +370,7 @@ function updateChart(v1, v2) {
 }
 
 // ============================================================
-// CAMERA - Không cần auth vì firmware CAM không yêu cầu
+// CAMERA
 // ============================================================
 function toggleStream() {
   if (isStreaming) {
@@ -425,7 +468,8 @@ function openOTA(which) {
   const host = which === 'main' ? config.mainHost : config.camHost;
   if (!host) { alert('Chưa cấu hình host!'); return; }
   const url = buildUrl(host, '/update');
-  document.getElementById('otaTitle').textContent = which === 'main' ? '🔄 OTA S3' : '🔄 OTA CAM';
+  document.getElementById('otaTitle').textContent =
+    which === 'main' ? '🔄 OTA S3' : '🔄 OTA CAM';
   document.getElementById('otaFrame').src = url;
   document.getElementById('otaModal').classList.remove('hidden');
 }
@@ -450,6 +494,7 @@ function switchTab(name) {
 // ============================================================
 function addLog(msg, type = '') {
   const el = document.getElementById('sysLog');
+  if (!el) return;
   const time = new Date().toLocaleTimeString('vi-VN');
   const line = document.createElement('div');
   line.className = 'log-line ' + type;
