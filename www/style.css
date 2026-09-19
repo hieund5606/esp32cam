@@ -429,3 +429,8 @@ html, body {
   border: none;
   background: #fff;
 }
+/* Bổ sung */
+.btn-warn {
+  background: linear-gradient(135deg, #ffc107, #ffca28);
+  color: #000;
+}
