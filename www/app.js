@@ -1,6 +1,6 @@
 // ============================================================
-// SMOKE DETECTOR APP - v6.1
-// Fix notification sound + build OK
+// SMOKE DETECTOR APP - v6.2
+// Fix timeout: mutex fetch + delay notification permission
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -19,10 +19,15 @@ let alertCount = 0;
 let appStartTime = Date.now();
 
 const DISCONNECT_THRESHOLD_MS = 5000;
-const HTTP_TIMEOUT_MS = 4000;
+const HTTP_TIMEOUT_MS = 6000;      // ← Tăng từ 4000 → 6000 cho iPhone chậm
 
 let chart = null;
 const MAX_CHART_POINTS = 60;
+
+// ============================================================
+// MUTEX — Chống chồng request
+// ============================================================
+let isFetching = false;
 
 // ============================================================
 // NOTIFICATION STATE
@@ -82,11 +87,10 @@ async function httpGet(url, timeoutMs = HTTP_TIMEOUT_MS) {
 }
 
 // ============================================================
-// KHỞI ĐỘNG
+// KHỞI ĐỘNG — Đợi notification xong mới fetch
 // ============================================================
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   loadConfig();
-  initNotifications();
   initChart();
   setupUI();
 
@@ -94,12 +98,21 @@ window.addEventListener('load', () => {
     document.getElementById('splash').classList.add('hide');
   }, 1200);
 
-  setInterval(fetchStatus, 1000);
+  // Đợi notification setup xong TRƯỚC KHI fetch
+  // để tránh permission popup block JavaScript
+  try {
+    await initNotifications();
+  } catch (e) {
+    // Bỏ qua lỗi notification — vẫn tiếp tục fetch
+  }
+
+  // Giờ mới bắt đầu fetch
+  setInterval(fetchStatus, 1500);      // ← Tăng từ 1000 → 1500ms
   setInterval(updateAppUptime, 1000);
   setInterval(checkDisconnect, 1000);
   fetchStatus();
 
-  addLog('📡 Khởi động app v6.1', 'ok');
+  addLog('📡 Khởi động app v6.2', 'ok');
   if (!config.mainHost) {
     addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
   } else {
@@ -151,6 +164,7 @@ function saveSettings() {
 
   isConnected = false;
   lastOkTime = 0;
+  isFetching = false;
 
   addLog(`✅ Đã lưu: S3=${config.mainHost}, CAM=${config.camHost || '--'}`, 'ok');
   alert('Đã lưu cài đặt!');
@@ -193,7 +207,18 @@ async function setupNativeNotifications() {
       return false;
     }
 
-    const perm = await LocalNotifications.requestPermissions();
+    // Chỉ request nếu chưa granted — tránh popup block
+    let perm;
+    try {
+      perm = await LocalNotifications.checkPermissions();
+      if (perm.display !== 'granted') {
+        perm = await LocalNotifications.requestPermissions();
+      }
+    } catch (e) {
+      addLog('⚠️ Không lấy được permission: ' + e.message, 'warn');
+      return false;
+    }
+
     if (perm.display !== 'granted') {
       addLog('❌ Chưa được cấp quyền thông báo', 'err');
       return false;
@@ -265,7 +290,7 @@ async function testNotification() {
 }
 
 // ============================================================
-// GỬI THÔNG BÁO (đã fix tiếng)
+// GỬI THÔNG BÁO
 // ============================================================
 async function sendNotification(id, title, body) {
   if (!notifConfig.enabled) return;
@@ -365,7 +390,7 @@ async function testConnection() {
     const s3Url = buildUrl(config.mainHost, '/data');
     addLog(`→ S3: ${s3Url}`, '');
     try {
-      const res = await httpGet(s3Url, 5000);
+      const res = await httpGet(s3Url, 8000);
       addLog(`✅ S3 OK: "${res}"`, 'ok');
     } catch (err) {
       addLog(`❌ S3 lỗi: ${err.message}`, 'err');
@@ -382,7 +407,7 @@ async function testConnection() {
       const timer = setTimeout(() => {
         addLog('❌ CAM timeout', 'err');
         resolve();
-      }, 5000);
+      }, 8000);
       img.onload = () => {
         clearTimeout(timer);
         addLog('✅ CAM OK', 'ok');
@@ -403,10 +428,14 @@ async function testConnection() {
 }
 
 // ============================================================
-// FETCH STATUS
+// FETCH STATUS — Có mutex chống chồng request
 // ============================================================
 async function fetchStatus() {
   if (!config.mainHost) return;
+
+  // Chống chồng request: nếu đang fetch thì bỏ qua
+  if (isFetching) return;
+  isFetching = true;
 
   const url = buildUrl(config.mainHost, '/data');
 
@@ -433,6 +462,8 @@ async function fetchStatus() {
     }
   } catch (err) {
     // checkDisconnect() xử lý
+  } finally {
+    isFetching = false;      // Luôn reset cờ
   }
 }
 
@@ -515,7 +546,7 @@ async function saveThresholds() {
   const url = buildUrl(config.mainHost, `/set_threshold?th1=${th1}&th2=${th2}`);
 
   try {
-    const res = await httpGet(url, 5000);
+    const res = await httpGet(url, 8000);
     addLog(`✅ Lưu ngưỡng: TH1=${th1}, TH2=${th2}`, 'ok');
     alert('Đã lưu ngưỡng!\n' + res);
   } catch (err) {
@@ -626,18 +657,18 @@ function loadNextFrame() {
       addLog('⚠️ Timeout frame', 'warn');
       loadNextFrame();
     }
-  }, 5000);
+  }, 8000);
 
   img.onload = () => {
     clearTimeout(timeout);
     setCamStatus(true);
-    if (isStreaming) setTimeout(loadNextFrame, 50);
+    if (isStreaming) setTimeout(loadNextFrame, 80);
   };
 
   img.onerror = () => {
     clearTimeout(timeout);
     setCamStatus(false);
-    if (isStreaming) setTimeout(loadNextFrame, 1000);
+    if (isStreaming) setTimeout(loadNextFrame, 1500);
   };
 
   img.src = url;
