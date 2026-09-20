@@ -1,6 +1,6 @@
 workflows:
   ios-ipa-unsigned:
-    name: Smoke Detector - IPA with Notifications
+    name: Smoke Detector - IPA with Notifications + BackgroundFetch
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
@@ -19,6 +19,7 @@ workflows:
           npm install
           npm install @capacitor/ios @capacitor/cli
           npm install @capacitor/local-notifications
+          npm install @capacitor-community/background-fetch
 
       - name: Add iOS platform
         script: |
@@ -28,7 +29,7 @@ workflows:
         script: |
           npx cap sync ios
 
-      - name: Patch Info.plist for Notifications + Local Network + ATS
+      - name: Patch Info.plist for Notifications + BackgroundFetch + Local Network
         script: |
           PLIST="ios/App/App/Info.plist"
           echo "=== Patching $PLIST ==="
@@ -46,12 +47,13 @@ workflows:
           /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:0 string '_http._tcp'" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:1 string '_https._tcp'" "$PLIST" 2>/dev/null || true
           
-          # Background fetch cho notifications
+          # Background modes
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string 'fetch'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:1 string 'processing'" "$PLIST" 2>/dev/null || true
           
           echo "=== Verify ==="
-          /usr/libexec/PlistBuddy -c "Print" "$PLIST" | grep -A2 -E "NSAppTransportSecurity|NSLocalNetwork|NSBonjour|UIBackgroundModes" || true
+          /usr/libexec/PlistBuddy -c "Print" "$PLIST" | grep -A3 -E "NSAppTransportSecurity|NSLocalNetwork|NSBonjour|UIBackgroundModes" || true
 
       - name: Install CocoaPods
         script: |
