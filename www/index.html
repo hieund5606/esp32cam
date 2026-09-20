@@ -167,17 +167,6 @@
         </label>
       </div>
 
-      <div class="notif-row">
-        <div class="notif-label">
-          <span class="notif-name">Chạy nền</span>
-          <span class="notif-desc">Kiểm tra định kỳ khi app đóng</span>
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="notifBackground" onchange="saveNotifSettings()">
-          <span class="slider"></span>
-        </label>
-      </div>
-
       <div class="config-row" style="margin-top: 12px;">
         <label>Chống spam (giây)</label>
         <input type="number" id="notifCooldown" min="10" max="600" value="60" onchange="saveNotifSettings()">
@@ -198,8 +187,7 @@
       <div class="info-row"><span>Uptime app:</span><span id="appUptime">0s</span></div>
       <div class="info-row"><span>Số lần mất kết nối:</span><span id="failCount">0</span></div>
       <div class="info-row"><span>Số cảnh báo:</span><span id="alertCount">0</span></div>
-      <div class="info-row"><span>Background fetch:</span><span id="bgFetchStatus">--</span></div>
-      <div class="info-row"><span>Phiên bản:</span><span>1.2.0</span></div>
+      <div class="info-row"><span>Phiên bản:</span><span>1.2.1</span></div>
     </div>
 
     <div class="config-card">
