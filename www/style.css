@@ -1,6 +1,6 @@
 /* ============================================================
    SMOKE DETECTOR - STYLES v5
-   Fix: Banner hide + full screen safe area
+   + Notifications UI
    ============================================================ */
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -35,7 +35,7 @@ html, body {
   user-select: none;
 }
 
-/* ============ SPLASH ============ */
+/* SPLASH */
 .splash {
   position: fixed;
   inset: 0;
@@ -65,7 +65,7 @@ html, body {
   50% { transform: scale(1.08); }
 }
 
-/* ============ BANNER ============ */
+/* BANNER */
 .banner {
   position: fixed;
   top: 0;
@@ -86,9 +86,7 @@ html, body {
   transition: transform 0.3s;
   will-change: transform;
 }
-.banner-hidden {
-  transform: translateY(-150%);
-}
+.banner-hidden { transform: translateY(-150%); }
 .banner-dot {
   width: 8px;
   height: 8px;
@@ -101,7 +99,7 @@ html, body {
   50% { opacity: 0.3; }
 }
 
-/* ============ CONTENT ============ */
+/* CONTENT */
 .content {
   position: absolute;
   top: var(--safe-top);
@@ -125,7 +123,7 @@ html, body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ============ HEADER ============ */
+/* HEADER */
 .header {
   text-align: center;
   margin-bottom: 20px;
@@ -167,7 +165,7 @@ html, body {
   font-family: 'Courier New', monospace;
 }
 
-/* ============ SENSOR CARDS ============ */
+/* SENSOR CARDS */
 .sensor-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -218,7 +216,7 @@ html, body {
   font-family: 'Courier New', monospace;
 }
 
-/* ============ CONFIG CARD ============ */
+/* CONFIG CARD */
 .config-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -233,9 +231,7 @@ html, body {
   font-weight: 600;
   margin-bottom: 14px;
 }
-.config-row {
-  margin-bottom: 12px;
-}
+.config-row { margin-bottom: 12px; }
 .config-row label {
   display: block;
   font-size: 11px;
@@ -259,7 +255,7 @@ html, body {
   box-shadow: 0 0 0 2px rgba(0,255,136,0.2);
 }
 
-/* ============ CHART ============ */
+/* CHART */
 .chart-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -278,7 +274,7 @@ html, body {
   height: 220px;
 }
 
-/* ============ BUTTONS ============ */
+/* BUTTONS */
 .btn {
   width: 100%;
   padding: 14px 16px;
@@ -307,7 +303,7 @@ html, body {
 }
 .btn-group .btn { flex: 1; }
 
-/* ============ CAMERA ============ */
+/* CAMERA */
 .camera-container {
   width: 100%;
   aspect-ratio: 4/3;
@@ -333,7 +329,7 @@ html, body {
   padding: 20px;
 }
 
-/* ============ LOG ============ */
+/* LOG */
 .log-box, #sysLog {
   background: rgba(0,0,0,0.4);
   border-radius: 10px;
@@ -360,7 +356,7 @@ html, body {
 .log-line.ok { color: var(--accent); }
 .log-line.warn { color: var(--warn); }
 
-/* ============ INFO ROW ============ */
+/* INFO ROW */
 .info-row {
   display: flex;
   justify-content: space-between;
@@ -375,7 +371,7 @@ html, body {
   font-weight: bold;
 }
 
-/* ============ TAB BAR ============ */
+/* TAB BAR */
 .tab-bar {
   position: fixed;
   bottom: 0;
@@ -403,7 +399,7 @@ html, body {
 .tab-icon { font-size: 20px; }
 .tab-label { font-size: 10px; font-weight: 600; }
 
-/* ============ MODAL OTA ============ */
+/* MODAL OTA */
 .modal {
   position: fixed;
   inset: 0;
@@ -436,4 +432,72 @@ html, body {
   width: 100%;
   border: none;
   background: #fff;
+}
+
+/* ============ NOTIFICATION SWITCH ============ */
+.notif-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.notif-row:last-of-type {
+  border-bottom: none;
+}
+.notif-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.notif-name {
+  font-size: 14px;
+  color: var(--text);
+  font-weight: 500;
+}
+.notif-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 51px;
+  height: 31px;
+  flex-shrink: 0;
+}
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(120, 120, 128, 0.32);
+  transition: 0.3s;
+  border-radius: 31px;
+}
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 27px;
+  width: 27px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+input:checked + .slider {
+  background-color: var(--accent);
+}
+input:checked + .slider:before {
+  transform: translateX(20px);
 }
