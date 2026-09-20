@@ -1,188 +1,44 @@
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<title>Smoke Detector</title>
-<link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-
-<!-- SPLASH -->
-<div id="splash" class="splash">
-  <div class="splash-icon">🛡️</div>
-  <div class="splash-title">SMOKE DETECTOR</div>
-  <div class="splash-sub">Hệ thống giám sát khói thuốc lá</div>
-</div>
-
-<!-- BANNER -->
-<div id="connBanner" class="banner banner-hidden">
-  <span class="banner-dot"></span>
-  <span id="bannerText">Đang kết nối...</span>
-</div>
-
-<!-- CONTENT -->
-<div class="content">
-
-  <!-- TAB DASHBOARD -->
-  <div id="tab-dashboard" class="tab-page active">
-    <div class="header">
-      <h1>🛡️ SMOKE DETECTOR</h1>
-      <div id="connStatus" class="conn-status">
-        <span class="dot dot-bad"></span>
-        <span id="connText">Chưa kết nối</span>
-      </div>
-      <div class="header-info">
-        <span id="mainHost">--</span>
-        <span id="uptimeText">Uptime: --</span>
-      </div>
-    </div>
-
-    <div class="sensor-grid">
-      <div class="sensor-card">
-        <div class="sensor-label">CẢM BIẾN KHÓI 1</div>
-        <div class="sensor-value" id="val1">--</div>
-        <div class="bar"><div class="bar-fill" id="bar1"></div></div>
-        <div class="sensor-thresh">Ngưỡng: <span id="thresh1">--</span></div>
-      </div>
-      <div class="sensor-card">
-        <div class="sensor-label">CẢM BIẾN KHÓI 2</div>
-        <div class="sensor-value" id="val2">--</div>
-        <div class="bar"><div class="bar-fill bar-2" id="bar2"></div></div>
-        <div class="sensor-thresh">Ngưỡng: <span id="thresh2">--</span></div>
-      </div>
-    </div>
-
     <div class="config-card">
-      <div class="config-row">
-        <label>Mức khói 1</label>
-        <input type="number" id="inputTh1" min="0" max="4095" placeholder="1500">
+      <div class="config-title">🔔 Thông báo cảnh báo</div>
+      
+      <div class="notif-row">
+        <div class="notif-label">
+          <span class="notif-name">Bật thông báo</span>
+          <span class="notif-desc">Nhận cảnh báo khi có khói</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="notifEnabled" onchange="toggleNotifications()">
+          <span class="slider"></span>
+        </label>
       </div>
-      <div class="config-row">
-        <label>Mức khói 2</label>
-        <input type="number" id="inputTh2" min="0" max="4095" placeholder="1500">
+
+      <div class="notif-row">
+        <div class="notif-label">
+          <span class="notif-name">Rung</span>
+          <span class="notif-desc">Rung khi có cảnh báo</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="notifVibrate" onchange="saveNotifSettings()">
+          <span class="slider"></span>
+        </label>
       </div>
-      <button class="btn btn-save" onclick="saveThresholds()">💾 LƯU NGƯỠNG</button>
-    </div>
 
-    <div class="chart-card">
-      <div class="chart-title">📈 Lịch sử 60 giây</div>
-      <div class="chart-wrapper">
-        <canvas id="sensorChart"></canvas>
+      <div class="notif-row">
+        <div class="notif-label">
+          <span class="notif-name">Âm thanh</span>
+          <span class="notif-desc">Phát tiếng khi cảnh báo</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="notifSound" onchange="saveNotifSettings()">
+          <span class="slider"></span>
+        </label>
       </div>
-    </div>
-  </div>
 
-  <!-- TAB CAMERA -->
-  <div id="tab-camera" class="tab-page">
-    <div class="header">
-      <h1>📷 CAMERA</h1>
-      <div id="camStatus" class="conn-status">
-        <span class="dot dot-bad"></span>
-        <span id="camStatusText">Chưa kết nối</span>
+      <div class="config-row" style="margin-top: 12px;">
+        <label>Chống spam (giây) — không thông báo lại trong khoảng này</label>
+        <input type="number" id="notifCooldown" min="10" max="600" value="60" onchange="saveNotifSettings()">
       </div>
-      <div class="header-info">
-        <span id="camHost">--</span>
-      </div>
+
+      <button class="btn btn-warn" onclick="testNotification()">🔔 TEST THÔNG BÁO</button>
+      <button class="btn btn-secondary" onclick="checkPermission()">🔐 KIỂM TRA QUYỀN</button>
     </div>
-
-    <div class="camera-container">
-      <img id="camStream" src="" alt="Camera stream">
-      <div id="camPlaceholder" class="cam-placeholder">Bấm "BẮT ĐẦU" để xem camera</div>
-    </div>
-
-    <div class="btn-group">
-      <button class="btn btn-primary" id="btnStreamToggle" onclick="toggleStream()">▶ BẮT ĐẦU</button>
-      <button class="btn btn-danger" onclick="captureAndSave()">📸 CHỤP & LƯU</button>
-    </div>
-
-    <div class="log-box">
-      <div class="log-title">Log camera</div>
-      <div id="camLog" class="log-content">
-        <div class="log-line">Chờ lệnh...</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- TAB SETTINGS -->
-  <div id="tab-settings" class="tab-page">
-    <div class="header">
-      <h1>⚙️ CÀI ĐẶT</h1>
-    </div>
-
-    <div class="config-card">
-      <div class="config-title">🔌 Kết nối thiết bị</div>
-      <div class="config-row">
-        <label>ESP32-S3 (IP hoặc hostname)</label>
-        <input type="text" id="cfgMainHost" placeholder="192.168.1.4 hoặc duchieu.local">
-      </div>
-      <div class="config-row">
-        <label>ESP32-CAM (IP hoặc hostname)</label>
-        <input type="text" id="cfgCamHost" placeholder="192.168.1.5 hoặc duchieu_esp32cam.local">
-      </div>
-      <div class="config-row">
-        <label>Username</label>
-        <input type="text" id="cfgUser" placeholder="duchieu">
-      </div>
-      <div class="config-row">
-        <label>Password</label>
-        <input type="password" id="cfgPass" placeholder="123456789">
-      </div>
-      <button class="btn btn-save" onclick="saveSettings()">💾 LƯU CÀI ĐẶT</button>
-      <button class="btn btn-warn" onclick="testConnection()">🔍 TEST KẾT NỐI</button>
-    </div>
-
-    <div class="config-card">
-      <div class="config-title">📡 Firmware Update (OTA)</div>
-      <button class="btn btn-primary" onclick="openOTA('main')">🔄 Update S3 Firmware</button>
-      <button class="btn btn-primary" onclick="openOTA('cam')">🔄 Update CAM Firmware</button>
-    </div>
-
-    <div class="config-card">
-      <div class="config-title">📊 Thông tin app</div>
-      <div class="info-row"><span>Uptime app:</span><span id="appUptime">0s</span></div>
-      <div class="info-row"><span>Số lần mất kết nối:</span><span id="failCount">0</span></div>
-      <div class="info-row"><span>Phiên bản:</span><span>1.0.0</span></div>
-    </div>
-
-    <div class="config-card">
-      <div class="config-title">📋 Nhật ký hệ thống</div>
-      <div id="sysLog" class="log-content">
-        <div class="log-line">Hệ thống khởi động...</div>
-      </div>
-      <button class="btn btn-secondary" onclick="clearLog()">🗑️ Xóa log</button>
-    </div>
-  </div>
-
-</div>
-
-<!-- TAB BAR -->
-<nav class="tab-bar">
-  <div class="tab-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
-    <span class="tab-icon">📊</span>
-    <span class="tab-label">Dashboard</span>
-  </div>
-  <div class="tab-item" data-tab="camera" onclick="switchTab('camera')">
-    <span class="tab-icon">📷</span>
-    <span class="tab-label">Camera</span>
-  </div>
-  <div class="tab-item" data-tab="settings" onclick="switchTab('settings')">
-    <span class="tab-icon">⚙️</span>
-    <span class="tab-label">Cài đặt</span>
-  </div>
-</nav>
-
-<!-- OTA MODAL -->
-<div id="otaModal" class="modal hidden">
-  <div class="modal-header">
-    <span id="otaTitle">OTA Update</span>
-    <button onclick="closeOTA()">✖</button>
-  </div>
-  <iframe id="otaFrame" src=""></iframe>
-</div>
-
-<script src="app.js"></script>
-</body>
-</html>
