@@ -1,6 +1,6 @@
 // ============================================================
-// SMOKE DETECTOR APP - v6
-// Fix: Notification sound + BackgroundFetch
+// SMOKE DETECTOR APP - v6.1
+// Fix notification sound + bỏ BackgroundFetch
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -31,7 +31,6 @@ let notifConfig = {
   enabled: true,
   vibrate: true,
   sound: true,
-  background: true,
   cooldown: 60
 };
 
@@ -100,7 +99,7 @@ window.addEventListener('load', () => {
   setInterval(checkDisconnect, 1000);
   fetchStatus();
 
-  addLog('📡 Khởi động app v6', 'ok');
+  addLog('📡 Khởi động app v6.1', 'ok');
   if (!config.mainHost) {
     addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
   } else {
@@ -172,22 +171,15 @@ async function initNotifications() {
   const en = document.getElementById('notifEnabled');
   const vi = document.getElementById('notifVibrate');
   const so = document.getElementById('notifSound');
-  const bg = document.getElementById('notifBackground');
   const co = document.getElementById('notifCooldown');
 
   if (en) en.checked = notifConfig.enabled;
   if (vi) vi.checked = notifConfig.vibrate;
   if (so) so.checked = notifConfig.sound;
-  if (bg) bg.checked = notifConfig.background;
   if (co) co.value = notifConfig.cooldown;
 
-  if (isNative) {
-    if (notifConfig.enabled) {
-      await setupNativeNotifications();
-    }
-    if (notifConfig.background) {
-      await setupBackgroundFetch();
-    }
+  if (isNative && notifConfig.enabled) {
+    await setupNativeNotifications();
   }
 
   addLog('🔔 Notification: ' + (notifConfig.enabled ? 'BẬT' : 'TẮT'), notifConfig.enabled ? 'ok' : 'warn');
@@ -215,7 +207,7 @@ async function setupNativeNotifications() {
         importance: 5,
         visibility: 1,
         vibration: notifConfig.vibrate,
-        sound: 'default',              // ← FIX: có tiếng
+        sound: 'default',
         lights: true,
         lightColor: '#00ff88'
       });
@@ -231,68 +223,9 @@ async function setupNativeNotifications() {
   }
 }
 
-async function setupBackgroundFetch() {
-  if (!isNative) return;
-
-  try {
-    const { BackgroundFetch } = Capacitor.Plugins;
-    if (!BackgroundFetch) {
-      addLog('⚠️ BackgroundFetch plugin không có', 'warn');
-      setBgStatus('Không có plugin');
-      return;
-    }
-
-    await BackgroundFetch.configure({
-      minimumFetchInterval: 15,
-      stopOnTerminate: false,
-      startOnBoot: true,
-      enableHeadless: true,
-      requiredNetworkType: 'any'
-    }, async (taskId) => {
-      addLog('🔄 BG fetch: ' + taskId, '');
-      setBgStatus('Đang fetch...');
-
-      if (config.mainHost) {
-        try {
-          const url = buildUrl(config.mainHost, '/data');
-          const text = await httpGet(url, 5000);
-          const parts = text.split('|');
-          if (parts.length >= 4) {
-            const v1 = parseInt(parts[0]) || 0;
-            const v2 = parseInt(parts[1]) || 0;
-            const t1 = parseInt(parts[2]) || 0;
-            const t2 = parseInt(parts[3]) || 0;
-            checkThresholdAlert(v1, v2, t1, t2);
-            setBgStatus('OK lúc ' + new Date().toLocaleTimeString('vi-VN'));
-          }
-        } catch (err) {
-          addLog('❌ BG fetch: ' + err.message, 'err');
-          setBgStatus('Lỗi');
-        }
-      }
-
-      BackgroundFetch.finish(taskId);
-    }, (error) => {
-      addLog('❌ BackgroundFetch: ' + error, 'err');
-      setBgStatus('Lỗi: ' + error);
-    });
-
-    addLog('✅ BackgroundFetch đã setup', 'ok');
-    setBgStatus('Đã bật');
-  } catch (err) {
-    addLog('❌ Lỗi BackgroundFetch: ' + err.message, 'err');
-    setBgStatus('Lỗi');
-  }
-}
-
-function setBgStatus(text) {
-  const el = document.getElementById('bgFetchStatus');
-  if (el) el.textContent = text;
-}
-
 async function checkPermission() {
   if (!isNative) {
-    alert('Tính năng này chỉ hoạt động trên app iOS/Android.\nTrên browser không hỗ trợ đầy đủ.');
+    alert('Tính năng này chỉ hoạt động trên app iOS/Android.');
     return;
   }
 
@@ -317,7 +250,6 @@ async function toggleNotifications() {
 function saveNotifSettings() {
   notifConfig.vibrate = document.getElementById('notifVibrate').checked;
   notifConfig.sound = document.getElementById('notifSound').checked;
-  notifConfig.background = document.getElementById('notifBackground').checked;
   notifConfig.cooldown = parseInt(document.getElementById('notifCooldown').value) || 60;
 
   localStorage.setItem('smoke_notif_config', JSON.stringify(notifConfig));
@@ -348,7 +280,7 @@ async function sendNotification(id, title, body) {
           body: body,
           channelId: 'smoke_alert',
           schedule: { at: new Date(Date.now() + 100) },
-          sound: notifConfig.sound ? 'default' : null,   // ← FIX
+          sound: notifConfig.sound ? 'default' : null,
           actionTypeId: '',
           extra: null
         }]
