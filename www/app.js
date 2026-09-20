@@ -1,7 +1,6 @@
 // ============================================================
-// SMOKE DETECTOR APP - v4
-// Fix: Banner logic dùng thời gian thay vì đếm fail
-// Bỏ Auth → tránh CORS preflight trên iOS
+// SMOKE DETECTOR APP - v5
+// Features: CORS fix + notifications + time-based disconnect
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -14,15 +13,34 @@ const DEFAULT_CONFIG = {
 let config = { ...DEFAULT_CONFIG };
 let isStreaming = false;
 let isConnected = false;
-let lastOkTime = 0;              // ← Thời điểm nhận data OK cuối cùng
+let lastOkTime = 0;
 let failCount = 0;
+let alertCount = 0;
 let appStartTime = Date.now();
 
-const DISCONNECT_THRESHOLD_MS = 5000;   // Báo mất kết nối nếu > 5s không có data
-const HTTP_TIMEOUT_MS = 4000;           // Timeout cho iPhone (dài hơn laptop)
+const DISCONNECT_THRESHOLD_MS = 5000;
+const HTTP_TIMEOUT_MS = 4000;
 
 let chart = null;
 const MAX_CHART_POINTS = 60;
+
+// ============================================================
+// NOTIFICATION STATE
+// ============================================================
+let notifConfig = {
+  enabled: true,
+  vibrate: true,
+  sound: true,
+  cooldown: 60
+};
+
+let lastNotifTime = { 1: 0, 2: 0 };
+let isAlerting = { 1: false, 2: false };
+
+// Check if running on native iOS/Android
+const isNative = typeof window.Capacitor !== 'undefined'
+                 && window.Capacitor.isNativePlatform
+                 && window.Capacitor.isNativePlatform();
 
 // ============================================================
 // URL HELPERS
@@ -36,7 +54,7 @@ function buildUrl(host, path) {
 }
 
 // ============================================================
-// HTTP GET - KHÔNG gửi Authorization (tránh preflight)
+// HTTP GET (không gửi Authorization để tránh CORS preflight)
 // ============================================================
 async function httpGet(url, timeoutMs = HTTP_TIMEOUT_MS) {
   if (!url) throw new Error('Chưa cấu hình host');
@@ -49,7 +67,6 @@ async function httpGet(url, timeoutMs = HTTP_TIMEOUT_MS) {
       method: 'GET',
       signal: controller.signal,
       cache: 'no-cache'
-      // KHÔNG gửi headers Authorization → không trigger preflight
     });
     clearTimeout(timer);
     if (res.status === 401) throw new Error('401 - Sai username/password');
@@ -70,6 +87,7 @@ async function httpGet(url, timeoutMs = HTTP_TIMEOUT_MS) {
 // ============================================================
 window.addEventListener('load', () => {
   loadConfig();
+  initNotifications();
   initChart();
   setupUI();
 
@@ -79,10 +97,10 @@ window.addEventListener('load', () => {
 
   setInterval(fetchStatus, 1000);
   setInterval(updateAppUptime, 1000);
-  setInterval(checkDisconnect, 1000);   // ← Kiểm tra mất kết nối riêng
+  setInterval(checkDisconnect, 1000);
   fetchStatus();
 
-  addLog('📡 Khởi động app v4', 'ok');
+  addLog('📡 Khởi động app v5 (có thông báo)', 'ok');
   if (!config.mainHost) {
     addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
   } else {
@@ -132,7 +150,6 @@ function saveSettings() {
   document.getElementById('mainHost').textContent = config.mainHost;
   document.getElementById('camHost').textContent = config.camHost || '--';
 
-  // Reset trạng thái kết nối
   isConnected = false;
   lastOkTime = 0;
 
@@ -142,12 +159,209 @@ function saveSettings() {
 }
 
 // ============================================================
+// NOTIFICATION SETUP
+// ============================================================
+async function initNotifications() {
+  const saved = localStorage.getItem('smoke_notif_config');
+  if (saved) {
+    try {
+      notifConfig = { ...notifConfig, ...JSON.parse(saved) };
+    } catch (e) {}
+  }
+
+  const en = document.getElementById('notifEnabled');
+  const vi = document.getElementById('notifVibrate');
+  const so = document.getElementById('notifSound');
+  const co = document.getElementById('notifCooldown');
+
+  if (en) en.checked = notifConfig.enabled;
+  if (vi) vi.checked = notifConfig.vibrate;
+  if (so) so.checked = notifConfig.sound;
+  if (co) co.value = notifConfig.cooldown;
+
+  if (isNative && notifConfig.enabled) {
+    await setupNativeNotifications();
+  }
+
+  addLog('🔔 Notification: ' + (notifConfig.enabled ? 'BẬT' : 'TẮT'), notifConfig.enabled ? 'ok' : 'warn');
+}
+
+async function setupNativeNotifications() {
+  try {
+    const { LocalNotifications } = Capacitor.Plugins;
+    if (!LocalNotifications) {
+      addLog('⚠️ Plugin Local Notifications không có', 'warn');
+      return false;
+    }
+
+    const perm = await LocalNotifications.requestPermissions();
+    if (perm.display !== 'granted') {
+      addLog('❌ Chưa được cấp quyền thông báo', 'err');
+      return false;
+    }
+
+    try {
+      await LocalNotifications.createChannel({
+        id: 'smoke_alert',
+        name: 'Cảnh báo khói',
+        description: 'Thông báo khi có khói',
+        importance: 5,
+        visibility: 1,
+        vibration: notifConfig.vibrate,
+        sound: notifConfig.sound ? 'default' : null
+      });
+    } catch (e) {
+      // iOS không cần channel
+    }
+
+    addLog('✅ Notification đã sẵn sàng', 'ok');
+    return true;
+  } catch (err) {
+    addLog('❌ Lỗi setup notification: ' + err.message, 'err');
+    return false;
+  }
+}
+
+async function checkPermission() {
+  if (!isNative) {
+    alert('Tính năng này chỉ hoạt động trên app iOS/Android.\nTrên browser không hỗ trợ đầy đủ.');
+    return;
+  }
+
+  try {
+    const { LocalNotifications } = Capacitor.Plugins;
+    const perm = await LocalNotifications.checkPermissions();
+    alert('Trạng thái quyền thông báo:\n' + JSON.stringify(perm, null, 2));
+  } catch (err) {
+    alert('Lỗi: ' + err.message);
+  }
+}
+
+async function toggleNotifications() {
+  notifConfig.enabled = document.getElementById('notifEnabled').checked;
+  saveNotifSettings();
+
+  if (notifConfig.enabled && isNative) {
+    await setupNativeNotifications();
+  }
+}
+
+function saveNotifSettings() {
+  notifConfig.vibrate = document.getElementById('notifVibrate').checked;
+  notifConfig.sound = document.getElementById('notifSound').checked;
+  notifConfig.cooldown = parseInt(document.getElementById('notifCooldown').value) || 60;
+
+  localStorage.setItem('smoke_notif_config', JSON.stringify(notifConfig));
+  addLog(`🔔 Đã lưu cài đặt thông báo`, 'ok');
+}
+
+async function testNotification() {
+  await sendNotification(
+    999,
+    '🧪 Thông báo thử',
+    'Đây là thông báo test từ Smoke Detector'
+  );
+}
+
+// ============================================================
+// GỬI THÔNG BÁO
+// ============================================================
+async function sendNotification(id, title, body) {
+  if (!notifConfig.enabled) return;
+
+  if (isNative) {
+    try {
+      const { LocalNotifications } = Capacitor.Plugins;
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: id,
+          title: title,
+          body: body,
+          channelId: 'smoke_alert',
+          schedule: { at: new Date(Date.now() + 100) },
+          sound: notifConfig.sound ? null : null,
+          actionTypeId: '',
+          extra: null
+        }]
+      });
+      addLog(`🔔 Đã gửi: ${title}`, 'ok');
+    } catch (err) {
+      addLog(`❌ Lỗi gửi thông báo: ${err.message}`, 'err');
+    }
+  } else if ('Notification' in window) {
+    if (Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body: body });
+      addLog(`🔔 Đã gửi (web): ${title}`, 'ok');
+    }
+  }
+
+  if (notifConfig.vibrate && navigator.vibrate) {
+    navigator.vibrate([200, 100, 200]);
+  }
+}
+
+// ============================================================
+// KIỂM TRA VƯỢT NGƯỠNG
+// ============================================================
+function checkThresholdAlert(v1, v2, t1, t2) {
+  const now = Date.now();
+
+  // Kênh 1
+  if (v1 >= t1) {
+    if (!isAlerting[1]) {
+      isAlerting[1] = true;
+      if (now - lastNotifTime[1] > notifConfig.cooldown * 1000) {
+        sendNotification(
+          1,
+          '🚨 CẢNH BÁO KHÓI — Kênh 1',
+          `Giá trị: ${v1} (ngưỡng ${t1})`
+        );
+        lastNotifTime[1] = now;
+        alertCount++;
+        const el = document.getElementById('alertCount');
+        if (el) el.textContent = alertCount;
+      }
+    }
+  } else {
+    if (isAlerting[1]) {
+      isAlerting[1] = false;
+      addLog(`✅ Kênh 1 đã an toàn (${v1})`, 'ok');
+    }
+  }
+
+  // Kênh 2
+  if (v2 >= t2) {
+    if (!isAlerting[2]) {
+      isAlerting[2] = true;
+      if (now - lastNotifTime[2] > notifConfig.cooldown * 1000) {
+        sendNotification(
+          2,
+          '🚨 CẢNH BÁO KHÓI — Kênh 2',
+          `Giá trị: ${v2} (ngưỡng ${t2})`
+        );
+        lastNotifTime[2] = now;
+        alertCount++;
+        const el = document.getElementById('alertCount');
+        if (el) el.textContent = alertCount;
+      }
+    }
+  } else {
+    if (isAlerting[2]) {
+      isAlerting[2] = false;
+      addLog(`✅ Kênh 2 đã an toàn (${v2})`, 'ok');
+    }
+  }
+}
+
+// ============================================================
 // TEST KẾT NỐI
 // ============================================================
 async function testConnection() {
   addLog('🔍 Bắt đầu test kết nối...', 'warn');
 
-  // Test S3
   if (config.mainHost) {
     const s3Url = buildUrl(config.mainHost, '/data');
     addLog(`→ S3: ${s3Url}`, '');
@@ -161,7 +375,6 @@ async function testConnection() {
     addLog('⚠️ Chưa nhập IP S3', 'warn');
   }
 
-  // Test CAM
   if (config.camHost) {
     const camUrl = buildUrl(config.camHost, '/photo') + '?t=' + Date.now();
     addLog(`→ CAM: ${buildUrl(config.camHost, '/photo')}`, '');
@@ -193,7 +406,7 @@ async function testConnection() {
 }
 
 // ============================================================
-// FETCH STATUS - Chỉ xử lý thành công, không xử lý fail ở đây
+// FETCH STATUS
 // ============================================================
 async function fetchStatus() {
   if (!config.mainHost) return;
@@ -213,10 +426,8 @@ async function fetchStatus() {
       updateSensorUI(v1, v2, t1, t2);
       updateChart(v1, v2);
 
-      // Ghi nhận thời điểm OK
       lastOkTime = Date.now();
 
-      // Lần đầu kết nối → ẩn banner
       if (!isConnected) {
         isConnected = true;
         setConnStatus(true);
@@ -224,17 +435,13 @@ async function fetchStatus() {
       }
     }
   } catch (err) {
-    // KHÔNG xử lý gì ở đây - để checkDisconnect() lo
-    // Tránh race condition khi 1 request fail nhưng request sau OK
+    // checkDisconnect() sẽ xử lý
   }
 }
 
-// ============================================================
-// KIỂM TRA MẤT KẾT NỐI - Chạy mỗi 1s, độc lập với fetch
-// ============================================================
 function checkDisconnect() {
   if (!config.mainHost) return;
-  if (lastOkTime === 0) return;   // Chưa từng kết nối, chưa cần báo
+  if (lastOkTime === 0) return;
 
   const elapsed = Date.now() - lastOkTime;
 
@@ -292,6 +499,9 @@ function updateSensorUI(v1, v2, t1, t2) {
   const inp2 = document.getElementById('inputTh2');
   if (!inp1.value) inp1.value = t1;
   if (!inp2.value) inp2.value = t2;
+
+  // Kiểm tra vượt ngưỡng → thông báo
+  checkThresholdAlert(v1, v2, t1, t2);
 }
 
 // ============================================================
