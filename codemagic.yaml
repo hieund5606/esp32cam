@@ -45,7 +45,6 @@ workflows:
           
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string 'fetch'" "$PLIST" 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:1 string 'processing'" "$PLIST" 2>/dev/null || true
           
           echo "=== Verify ==="
           /usr/libexec/PlistBuddy -c "Print" "$PLIST" | grep -A3 -E "NSAppTransportSecurity|NSLocalNetwork|NSBonjour|UIBackgroundModes" || true
