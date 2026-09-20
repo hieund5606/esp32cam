@@ -1,5 +1,5 @@
 /* ============================================================
-   SMOKE DETECTOR - STYLES v6
+   SMOKE DETECTOR - STYLES v6.1
    ============================================================ */
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -34,7 +34,6 @@ html, body {
   user-select: none;
 }
 
-/* SPLASH */
 .splash {
   position: fixed;
   inset: 0;
@@ -64,7 +63,6 @@ html, body {
   50% { transform: scale(1.08); }
 }
 
-/* BANNER */
 .banner {
   position: fixed;
   top: 0;
@@ -98,7 +96,6 @@ html, body {
   50% { opacity: 0.3; }
 }
 
-/* CONTENT */
 .content {
   position: absolute;
   top: var(--safe-top);
@@ -121,7 +118,6 @@ html, body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* HEADER */
 .header { text-align: center; margin-bottom: 20px; }
 .header h1 {
   font-size: 22px;
@@ -155,7 +151,6 @@ html, body {
   font-family: 'Courier New', monospace;
 }
 
-/* SENSOR CARDS */
 .sensor-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -206,7 +201,6 @@ html, body {
   font-family: 'Courier New', monospace;
 }
 
-/* CONFIG CARD */
 .config-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -245,7 +239,6 @@ html, body {
   box-shadow: 0 0 0 2px rgba(0,255,136,0.2);
 }
 
-/* CHART */
 .chart-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
@@ -261,7 +254,6 @@ html, body {
 }
 .chart-wrapper { position: relative; height: 220px; }
 
-/* BUTTONS */
 .btn {
   width: 100%;
   padding: 14px 16px;
@@ -286,7 +278,6 @@ html, body {
 .btn-group { display: flex; gap: 10px; }
 .btn-group .btn { flex: 1; }
 
-/* CAMERA */
 .camera-container {
   width: 100%;
   aspect-ratio: 4/3;
@@ -308,7 +299,6 @@ html, body {
   padding: 20px;
 }
 
-/* LOG */
 .log-box, #sysLog {
   background: rgba(0,0,0,0.4);
   border-radius: 10px;
@@ -335,7 +325,6 @@ html, body {
 .log-line.ok { color: var(--accent); }
 .log-line.warn { color: var(--warn); }
 
-/* INFO ROW */
 .info-row {
   display: flex;
   justify-content: space-between;
@@ -350,7 +339,6 @@ html, body {
   font-weight: bold;
 }
 
-/* TAB BAR */
 .tab-bar {
   position: fixed;
   bottom: 0;
@@ -378,7 +366,6 @@ html, body {
 .tab-icon { font-size: 20px; }
 .tab-label { font-size: 10px; font-weight: 600; }
 
-/* MODAL OTA */
 .modal {
   position: fixed;
   inset: 0;
@@ -408,7 +395,6 @@ html, body {
 }
 .modal iframe { flex: 1; width: 100%; border: none; background: #fff; }
 
-/* NOTIFICATION SWITCH */
 .notif-row {
   display: flex;
   justify-content: space-between;
