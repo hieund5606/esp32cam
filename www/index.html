@@ -10,20 +10,17 @@
 </head>
 <body>
 
-<!-- SPLASH -->
 <div id="splash" class="splash">
   <div class="splash-icon">🛡️</div>
   <div class="splash-title">SMOKE DETECTOR</div>
   <div class="splash-sub">Hệ thống giám sát khói thuốc lá</div>
 </div>
 
-<!-- BANNER -->
 <div id="connBanner" class="banner banner-hidden">
   <span class="banner-dot"></span>
   <span id="bannerText">Đang kết nối...</span>
 </div>
 
-<!-- CONTENT -->
 <div class="content">
 
   <!-- TAB DASHBOARD -->
@@ -170,8 +167,19 @@
         </label>
       </div>
 
+      <div class="notif-row">
+        <div class="notif-label">
+          <span class="notif-name">Chạy nền</span>
+          <span class="notif-desc">Kiểm tra định kỳ khi app đóng</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="notifBackground" onchange="saveNotifSettings()">
+          <span class="slider"></span>
+        </label>
+      </div>
+
       <div class="config-row" style="margin-top: 12px;">
-        <label>Chống spam (giây) — không thông báo lại trong khoảng này</label>
+        <label>Chống spam (giây)</label>
         <input type="number" id="notifCooldown" min="10" max="600" value="60" onchange="saveNotifSettings()">
       </div>
 
@@ -190,7 +198,8 @@
       <div class="info-row"><span>Uptime app:</span><span id="appUptime">0s</span></div>
       <div class="info-row"><span>Số lần mất kết nối:</span><span id="failCount">0</span></div>
       <div class="info-row"><span>Số cảnh báo:</span><span id="alertCount">0</span></div>
-      <div class="info-row"><span>Phiên bản:</span><span>1.1.0</span></div>
+      <div class="info-row"><span>Background fetch:</span><span id="bgFetchStatus">--</span></div>
+      <div class="info-row"><span>Phiên bản:</span><span>1.2.0</span></div>
     </div>
 
     <div class="config-card">
@@ -204,7 +213,6 @@
 
 </div>
 
-<!-- TAB BAR -->
 <nav class="tab-bar">
   <div class="tab-item active" data-tab="dashboard" onclick="switchTab('dashboard')">
     <span class="tab-icon">📊</span>
@@ -220,7 +228,6 @@
   </div>
 </nav>
 
-<!-- OTA MODAL -->
 <div id="otaModal" class="modal hidden">
   <div class="modal-header">
     <span id="otaTitle">OTA Update</span>
