@@ -1,6 +1,6 @@
 workflows:
   ios-ipa-unsigned:
-    name: Smoke Detector - IPA for Sideloadly
+    name: Smoke Detector - IPA with Notifications
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
@@ -18,14 +18,40 @@ workflows:
         script: |
           npm install
           npm install @capacitor/ios @capacitor/cli
+          npm install @capacitor/local-notifications
 
       - name: Add iOS platform
         script: |
           npx cap add ios
 
-      - name: Sync web assets
+      - name: Sync plugins
         script: |
           npx cap sync ios
+
+      - name: Patch Info.plist for Notifications + Local Network + ATS
+        script: |
+          PLIST="ios/App/App/Info.plist"
+          echo "=== Patching $PLIST ==="
+          
+          # ATS
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$PLIST" 2>/dev/null || true
+          
+          # Local Network
+          /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 'Ung dung can truy cap mang noi bo de ket noi voi ESP32'" "$PLIST" 2>/dev/null || true
+          
+          # Bonjour
+          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices array" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:0 string '_http._tcp'" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:1 string '_https._tcp'" "$PLIST" 2>/dev/null || true
+          
+          # Background fetch cho notifications
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string 'fetch'" "$PLIST" 2>/dev/null || true
+          
+          echo "=== Verify ==="
+          /usr/libexec/PlistBuddy -c "Print" "$PLIST" | grep -A2 -E "NSAppTransportSecurity|NSLocalNetwork|NSBonjour|UIBackgroundModes" || true
 
       - name: Install CocoaPods
         script: |
@@ -55,7 +81,7 @@ workflows:
           cp -R App.xcarchive/Products/Applications/App.app Payload/
           zip -r SmokeDetector.ipa Payload
           ls -la
-          echo "✅ IPA created: $(pwd)/SmokeDetector.ipa"
+          echo "✅ IPA created"
 
     artifacts:
       - ios/App/build/*.ipa
