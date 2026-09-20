@@ -9,5 +9,12 @@
   "ios": {
     "contentInset": "never",
     "backgroundColor": "#0f0c29"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#00ff88",
+      "sound": "default"
+    }
   }
 }
