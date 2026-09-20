@@ -1,6 +1,6 @@
 workflows:
   ios-ipa-unsigned:
-    name: Smoke Detector - IPA with Notifications + BackgroundFetch
+    name: Smoke Detector - IPA with Notifications
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
@@ -19,7 +19,6 @@ workflows:
           npm install
           npm install @capacitor/ios @capacitor/cli
           npm install @capacitor/local-notifications
-          npm install @capacitor-community/background-fetch
 
       - name: Add iOS platform
         script: |
@@ -29,25 +28,21 @@ workflows:
         script: |
           npx cap sync ios
 
-      - name: Patch Info.plist for Notifications + BackgroundFetch + Local Network
+      - name: Patch Info.plist
         script: |
           PLIST="ios/App/App/Info.plist"
           echo "=== Patching $PLIST ==="
           
-          # ATS
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" "$PLIST" 2>/dev/null || true
           
-          # Local Network
           /usr/libexec/PlistBuddy -c "Add :NSLocalNetworkUsageDescription string 'Ung dung can truy cap mang noi bo de ket noi voi ESP32'" "$PLIST" 2>/dev/null || true
           
-          # Bonjour
           /usr/libexec/PlistBuddy -c "Add :NSBonjourServices array" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:0 string '_http._tcp'" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :NSBonjourServices:1 string '_https._tcp'" "$PLIST" 2>/dev/null || true
           
-          # Background modes
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string 'fetch'" "$PLIST" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:1 string 'processing'" "$PLIST" 2>/dev/null || true
