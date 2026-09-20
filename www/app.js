@@ -1,6 +1,6 @@
 // ============================================================
 // SMOKE DETECTOR APP - v6.1
-// Fix notification sound + bỏ BackgroundFetch
+// Fix notification sound + build OK
 // ============================================================
 
 const DEFAULT_CONFIG = {
