@@ -1,6 +1,5 @@
 /* ============================================================
-   SMOKE DETECTOR - STYLES v5
-   + Notifications UI
+   SMOKE DETECTOR - STYLES v6
    ============================================================ */
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -109,7 +108,6 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  background: transparent;
 }
 
 .tab-page {
@@ -124,10 +122,7 @@ html, body {
 }
 
 /* HEADER */
-.header {
-  text-align: center;
-  margin-bottom: 20px;
-}
+.header { text-align: center; margin-bottom: 20px; }
 .header h1 {
   font-size: 22px;
   background: linear-gradient(90deg, #00ff88, #00d4ff);
@@ -147,12 +142,7 @@ html, body {
   font-size: 12px;
   margin-bottom: 8px;
 }
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-}
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot-ok { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 .dot-bad { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
 .dot-warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
@@ -269,10 +259,7 @@ html, body {
   font-weight: 600;
   margin-bottom: 10px;
 }
-.chart-wrapper {
-  position: relative;
-  height: 220px;
-}
+.chart-wrapper { position: relative; height: 220px; }
 
 /* BUTTONS */
 .btn {
@@ -296,11 +283,7 @@ html, body {
 .btn-secondary { background: rgba(255,255,255,0.1); color: var(--text); }
 .btn-warn { background: linear-gradient(135deg, #ffc107, #ffca28); color: #000; }
 .btn:disabled { opacity: 0.5; }
-
-.btn-group {
-  display: flex;
-  gap: 10px;
-}
+.btn-group { display: flex; gap: 10px; }
 .btn-group .btn { flex: 1; }
 
 /* CAMERA */
@@ -317,11 +300,7 @@ html, body {
   justify-content: center;
   position: relative;
 }
-#camStream {
-  max-width: 100%;
-  max-height: 100%;
-  display: none;
-}
+#camStream { max-width: 100%; max-height: 100%; display: none; }
 .cam-placeholder {
   color: var(--text-dim);
   font-size: 13px;
@@ -427,14 +406,9 @@ html, body {
   font-size: 20px;
   cursor: pointer;
 }
-.modal iframe {
-  flex: 1;
-  width: 100%;
-  border: none;
-  background: #fff;
-}
+.modal iframe { flex: 1; width: 100%; border: none; background: #fff; }
 
-/* ============ NOTIFICATION SWITCH ============ */
+/* NOTIFICATION SWITCH */
 .notif-row {
   display: flex;
   justify-content: space-between;
@@ -442,23 +416,10 @@ html, body {
   padding: 12px 0;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
-.notif-row:last-of-type {
-  border-bottom: none;
-}
-.notif-label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.notif-name {
-  font-size: 14px;
-  color: var(--text);
-  font-weight: 500;
-}
-.notif-desc {
-  font-size: 11px;
-  color: var(--text-dim);
-}
+.notif-row:last-of-type { border-bottom: none; }
+.notif-label { display: flex; flex-direction: column; gap: 2px; }
+.notif-name { font-size: 14px; color: var(--text); font-weight: 500; }
+.notif-desc { font-size: 11px; color: var(--text-dim); }
 
 .switch {
   position: relative;
@@ -467,11 +428,7 @@ html, body {
   height: 31px;
   flex-shrink: 0;
 }
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
+.switch input { opacity: 0; width: 0; height: 0; }
 .slider {
   position: absolute;
   cursor: pointer;
@@ -495,9 +452,5 @@ html, body {
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
-input:checked + .slider {
-  background-color: var(--accent);
-}
-input:checked + .slider:before {
-  transform: translateX(20px);
-}
+input:checked + .slider { background-color: var(--accent); }
+input:checked + .slider:before { transform: translateX(20px); }
