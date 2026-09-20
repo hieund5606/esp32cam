@@ -1,6 +1,6 @@
 // ============================================================
-// SMOKE DETECTOR APP - v5
-// Features: CORS fix + notifications + time-based disconnect
+// SMOKE DETECTOR APP - v6
+// Fix: Notification sound + BackgroundFetch
 // ============================================================
 
 const DEFAULT_CONFIG = {
@@ -31,13 +31,13 @@ let notifConfig = {
   enabled: true,
   vibrate: true,
   sound: true,
+  background: true,
   cooldown: 60
 };
 
 let lastNotifTime = { 1: 0, 2: 0 };
 let isAlerting = { 1: false, 2: false };
 
-// Check if running on native iOS/Android
 const isNative = typeof window.Capacitor !== 'undefined'
                  && window.Capacitor.isNativePlatform
                  && window.Capacitor.isNativePlatform();
@@ -54,7 +54,7 @@ function buildUrl(host, path) {
 }
 
 // ============================================================
-// HTTP GET (không gửi Authorization để tránh CORS preflight)
+// HTTP GET
 // ============================================================
 async function httpGet(url, timeoutMs = HTTP_TIMEOUT_MS) {
   if (!url) throw new Error('Chưa cấu hình host');
@@ -100,7 +100,7 @@ window.addEventListener('load', () => {
   setInterval(checkDisconnect, 1000);
   fetchStatus();
 
-  addLog('📡 Khởi động app v5 (có thông báo)', 'ok');
+  addLog('📡 Khởi động app v6', 'ok');
   if (!config.mainHost) {
     addLog('⚠️ Chưa cấu hình ESP32-S3! Vào tab Cài đặt.', 'warn');
   } else {
@@ -172,15 +172,22 @@ async function initNotifications() {
   const en = document.getElementById('notifEnabled');
   const vi = document.getElementById('notifVibrate');
   const so = document.getElementById('notifSound');
+  const bg = document.getElementById('notifBackground');
   const co = document.getElementById('notifCooldown');
 
   if (en) en.checked = notifConfig.enabled;
   if (vi) vi.checked = notifConfig.vibrate;
   if (so) so.checked = notifConfig.sound;
+  if (bg) bg.checked = notifConfig.background;
   if (co) co.value = notifConfig.cooldown;
 
-  if (isNative && notifConfig.enabled) {
-    await setupNativeNotifications();
+  if (isNative) {
+    if (notifConfig.enabled) {
+      await setupNativeNotifications();
+    }
+    if (notifConfig.background) {
+      await setupBackgroundFetch();
+    }
   }
 
   addLog('🔔 Notification: ' + (notifConfig.enabled ? 'BẬT' : 'TẮT'), notifConfig.enabled ? 'ok' : 'warn');
@@ -208,7 +215,9 @@ async function setupNativeNotifications() {
         importance: 5,
         visibility: 1,
         vibration: notifConfig.vibrate,
-        sound: notifConfig.sound ? 'default' : null
+        sound: 'default',              // ← FIX: có tiếng
+        lights: true,
+        lightColor: '#00ff88'
       });
     } catch (e) {
       // iOS không cần channel
@@ -220,6 +229,65 @@ async function setupNativeNotifications() {
     addLog('❌ Lỗi setup notification: ' + err.message, 'err');
     return false;
   }
+}
+
+async function setupBackgroundFetch() {
+  if (!isNative) return;
+
+  try {
+    const { BackgroundFetch } = Capacitor.Plugins;
+    if (!BackgroundFetch) {
+      addLog('⚠️ BackgroundFetch plugin không có', 'warn');
+      setBgStatus('Không có plugin');
+      return;
+    }
+
+    await BackgroundFetch.configure({
+      minimumFetchInterval: 15,
+      stopOnTerminate: false,
+      startOnBoot: true,
+      enableHeadless: true,
+      requiredNetworkType: 'any'
+    }, async (taskId) => {
+      addLog('🔄 BG fetch: ' + taskId, '');
+      setBgStatus('Đang fetch...');
+
+      if (config.mainHost) {
+        try {
+          const url = buildUrl(config.mainHost, '/data');
+          const text = await httpGet(url, 5000);
+          const parts = text.split('|');
+          if (parts.length >= 4) {
+            const v1 = parseInt(parts[0]) || 0;
+            const v2 = parseInt(parts[1]) || 0;
+            const t1 = parseInt(parts[2]) || 0;
+            const t2 = parseInt(parts[3]) || 0;
+            checkThresholdAlert(v1, v2, t1, t2);
+            setBgStatus('OK lúc ' + new Date().toLocaleTimeString('vi-VN'));
+          }
+        } catch (err) {
+          addLog('❌ BG fetch: ' + err.message, 'err');
+          setBgStatus('Lỗi');
+        }
+      }
+
+      BackgroundFetch.finish(taskId);
+    }, (error) => {
+      addLog('❌ BackgroundFetch: ' + error, 'err');
+      setBgStatus('Lỗi: ' + error);
+    });
+
+    addLog('✅ BackgroundFetch đã setup', 'ok');
+    setBgStatus('Đã bật');
+  } catch (err) {
+    addLog('❌ Lỗi BackgroundFetch: ' + err.message, 'err');
+    setBgStatus('Lỗi');
+  }
+}
+
+function setBgStatus(text) {
+  const el = document.getElementById('bgFetchStatus');
+  if (el) el.textContent = text;
 }
 
 async function checkPermission() {
@@ -249,6 +317,7 @@ async function toggleNotifications() {
 function saveNotifSettings() {
   notifConfig.vibrate = document.getElementById('notifVibrate').checked;
   notifConfig.sound = document.getElementById('notifSound').checked;
+  notifConfig.background = document.getElementById('notifBackground').checked;
   notifConfig.cooldown = parseInt(document.getElementById('notifCooldown').value) || 60;
 
   localStorage.setItem('smoke_notif_config', JSON.stringify(notifConfig));
@@ -264,7 +333,7 @@ async function testNotification() {
 }
 
 // ============================================================
-// GỬI THÔNG BÁO
+// GỬI THÔNG BÁO (đã fix tiếng)
 // ============================================================
 async function sendNotification(id, title, body) {
   if (!notifConfig.enabled) return;
@@ -279,7 +348,7 @@ async function sendNotification(id, title, body) {
           body: body,
           channelId: 'smoke_alert',
           schedule: { at: new Date(Date.now() + 100) },
-          sound: notifConfig.sound ? null : null,
+          sound: notifConfig.sound ? 'default' : null,   // ← FIX
           actionTypeId: '',
           extra: null
         }]
@@ -309,7 +378,6 @@ async function sendNotification(id, title, body) {
 function checkThresholdAlert(v1, v2, t1, t2) {
   const now = Date.now();
 
-  // Kênh 1
   if (v1 >= t1) {
     if (!isAlerting[1]) {
       isAlerting[1] = true;
@@ -328,11 +396,10 @@ function checkThresholdAlert(v1, v2, t1, t2) {
   } else {
     if (isAlerting[1]) {
       isAlerting[1] = false;
-      addLog(`✅ Kênh 1 đã an toàn (${v1})`, 'ok');
+      addLog(`✅ Kênh 1 an toàn (${v1})`, 'ok');
     }
   }
 
-  // Kênh 2
   if (v2 >= t2) {
     if (!isAlerting[2]) {
       isAlerting[2] = true;
@@ -351,7 +418,7 @@ function checkThresholdAlert(v1, v2, t1, t2) {
   } else {
     if (isAlerting[2]) {
       isAlerting[2] = false;
-      addLog(`✅ Kênh 2 đã an toàn (${v2})`, 'ok');
+      addLog(`✅ Kênh 2 an toàn (${v2})`, 'ok');
     }
   }
 }
@@ -386,20 +453,18 @@ async function testConnection() {
       }, 5000);
       img.onload = () => {
         clearTimeout(timer);
-        addLog('✅ CAM OK - load được ảnh', 'ok');
+        addLog('✅ CAM OK', 'ok');
         setCamStatus(true);
         resolve();
       };
       img.onerror = () => {
         clearTimeout(timer);
-        addLog('❌ CAM lỗi - không load được /photo', 'err');
+        addLog('❌ CAM lỗi', 'err');
         setCamStatus(false);
         resolve();
       };
       img.src = camUrl;
     });
-  } else {
-    addLog('⚠️ Chưa nhập IP CAM', 'warn');
   }
 
   addLog('🏁 Test xong', 'warn');
@@ -435,7 +500,7 @@ async function fetchStatus() {
       }
     }
   } catch (err) {
-    // checkDisconnect() sẽ xử lý
+    // checkDisconnect() xử lý
   }
 }
 
@@ -451,7 +516,7 @@ function checkDisconnect() {
     const el = document.getElementById('failCount');
     if (el) el.textContent = failCount;
     setConnStatus(false);
-    addLog(`❌ Mất kết nối S3 (${Math.round(elapsed / 1000)}s không có data)`, 'err');
+    addLog(`❌ Mất kết nối S3 (${Math.round(elapsed / 1000)}s)`, 'err');
   }
 }
 
@@ -500,7 +565,6 @@ function updateSensorUI(v1, v2, t1, t2) {
   if (!inp1.value) inp1.value = t1;
   if (!inp2.value) inp2.value = t2;
 
-  // Kiểm tra vượt ngưỡng → thông báo
   checkThresholdAlert(v1, v2, t1, t2);
 }
 
@@ -520,7 +584,7 @@ async function saveThresholds() {
 
   try {
     const res = await httpGet(url, 5000);
-    addLog(`✅ Lưu ngưỡng OK: TH1=${th1}, TH2=${th2}`, 'ok');
+    addLog(`✅ Lưu ngưỡng: TH1=${th1}, TH2=${th2}`, 'ok');
     alert('Đã lưu ngưỡng!\n' + res);
   } catch (err) {
     addLog(`❌ Lỗi lưu ngưỡng: ${err.message}`, 'err');
@@ -574,9 +638,7 @@ function initChart() {
         x: { grid: { display: false }, ticks: { display: false } }
       },
       plugins: {
-        legend: {
-          labels: { color: '#eee', font: { size: 11 }, boxWidth: 12 }
-        }
+        legend: { labels: { color: '#eee', font: { size: 11 }, boxWidth: 12 } }
       }
     }
   });
@@ -606,17 +668,17 @@ function toggleStream() {
     const ph = document.getElementById('camPlaceholder');
     ph.style.display = 'block';
     ph.textContent = 'Đã dừng stream';
-    addLog('⏹ Dừng camera stream', 'warn');
+    addLog('⏹ Dừng camera', 'warn');
   } else {
     if (!config.camHost) {
-      alert('Chưa cấu hình ESP32-CAM! Vào tab Cài đặt.');
+      alert('Chưa cấu hình ESP32-CAM!');
       return;
     }
     isStreaming = true;
     document.getElementById('btnStreamToggle').textContent = '⏹ DỪNG';
     document.getElementById('camPlaceholder').style.display = 'none';
     document.getElementById('camStream').style.display = 'block';
-    addLog('▶ Bắt đầu camera stream', 'ok');
+    addLog('▶ Bắt đầu camera', 'ok');
     loadNextFrame();
   }
 }
@@ -629,7 +691,7 @@ function loadNextFrame() {
 
   const timeout = setTimeout(() => {
     if (isStreaming) {
-      addLog('⚠️ Timeout frame, thử lại...', 'warn');
+      addLog('⚠️ Timeout frame', 'warn');
       loadNextFrame();
     }
   }, 5000);
