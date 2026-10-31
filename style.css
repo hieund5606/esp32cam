@@ -286,17 +286,17 @@ html, body {
   overflow: hidden;
   margin-bottom: 16px;
   border: 2px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
+  position: relative; /* Dùng relative để làm mốc cho ảnh bên trong */
 }
 
 /* Đã chỉnh sửa để ảnh lấp đầy khung container một cách mượt mà */
 #camStream {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: cover; /* Ép ảnh lấp đầy toàn bộ khung hình, không bị bóp méo */
   display: none;
 }
 
